@@ -1,0 +1,339 @@
+{
+    "items": [
+        {
+            "asset": "WIF",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "AAVE",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "USDC",
+            "available": "999999990000",
+            "trading": "0"
+        },
+        {
+            "asset": "FTN",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "MNT",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "PYUSD",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SPX",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "VIRTUAL",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "XLM",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "DOGE",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "LEO",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "NEXO",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "OP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "PEPE",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "GT",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "PUMP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SOL",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "USDG",
+            "available": "1000000000001",
+            "trading": "0"
+        },
+        {
+            "asset": "BNB",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "CC",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "OKB",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "TRX",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "WLD",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "FET",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "GBP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "MATIC",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SKY",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "UNI",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "USDP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "CRO",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "JUP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "LSSOL",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BONK",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BUSD",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "PENGU",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "POL",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "XRP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BCH",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "LTC",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "QNT",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "ENA",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "EUR",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "ONDO",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "APT",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "INJ",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "RENDER",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SUI",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "ATOM",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "AVAX",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BTC",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "USD",
+            "available": "1000000009999",
+            "trading": "0"
+        },
+        {
+            "asset": "USDT",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BRL",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "LINK",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SHIB",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "ARB",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BMD",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "RNDR",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "SGD",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "HYPE",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "TRUMP",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "BGB",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "ETH",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "FARTCOIN",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "LION",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "PAXG",
+            "available": "0",
+            "trading": "0"
+        },
+        {
+            "asset": "USDL",
+            "available": "0",
+            "trading": "0"
+        }
+    ]
+}

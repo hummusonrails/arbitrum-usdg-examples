@@ -1,0 +1,13 @@
+{
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "transfer.wire_deposit.pending",
+    "object_type": "transfer_status_change",
+    "object": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "memo": "3CF6BWW3ZJ5AUVI4",
+        "profile_id": "00000000-0000-4000-8000-000000000003",
+        "status": "PENDING",
+        "type": "WIRE_DEPOSIT"
+    },
+    "created_at": "2026-10-20T10:23:41.163Z"
+}

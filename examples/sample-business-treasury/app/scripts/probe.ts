@@ -133,7 +133,8 @@ async function until<T>(
 }
 
 function describeTransfer(t: Transfer): string {
-    const reason = t.secondary_status?.name ?? Object.keys(t.status_details ?? {})[0] ?? '';
+    const reason =
+        t.secondary_status?.name ?? Object.keys(t.status_details ?? {})[0] ?? '';
 
     return `${t.type} ${t.status}${reason ? ` (${reason})` : ''} hash=${t.crypto_tx_hash || 'none'}`;
 }
@@ -221,7 +222,9 @@ await check('mint 1 USDG from the profile to the wallet on ARBITRUM_ONE', async 
     const done = await until('mint orchestration', async () => {
         const o = await paxos.getOrchestration(created.id!);
 
-        return ['COMPLETED', 'FAILED', 'REJECTED'].includes(o.status ?? '') ? o : undefined;
+        return ['COMPLETED', 'FAILED', 'REJECTED'].includes(o.status ?? '')
+            ? o
+            : undefined;
     });
 
     await save('GetOrchestration.mint', done);
@@ -249,7 +252,11 @@ await check('mint 1 USDG from the profile to the wallet on ARBITRUM_ONE', async 
     const receipt = await chain.getTransactionReceipt({
         hash: transfer.crypto_tx_hash as Hex,
     });
-    const logs = parseEventLogs({ abi: usdgAbi, logs: receipt.logs, eventName: 'Transfer' });
+    const logs = parseEventLogs({
+        abi: usdgAbi,
+        logs: receipt.logs,
+        eventName: 'Transfer',
+    });
     const after = await chain.readContract({
         address: network.address,
         abi: usdgAbi,
@@ -301,33 +308,40 @@ await check('deposit 1 USDG to an ARBITRUM_ONE deposit address', async () => {
 
     note(describeTransfer(deposit));
 
-    if (deposit.secondary_status?.name === 'TRAVEL_RULE_INFO_REQUESTED') {
-        await save('GetTransfer.crypto_deposit.travel_rule', deposit);
-
-        if (!optional) {
-            throw new Error('Deposit is held for travel rule info and the update scope is missing');
-        }
-
-        try {
-            await paxos.updateCryptoDeposit(deposit.id!, {
-                identity_id: process.env.PAXOS_IDENTITY_ID ?? deposit.identity_id!,
-                originator_address_info: {
-                    institution_info: {
-                        institution_name: process.env.PAXOS_INSTITUTION_NAME ?? 'Company',
-                    },
-                },
-            });
-        } catch (err) {
-            if (!(err instanceof PaxosApiError && err.status === 409)) {
-                throw err;
-            }
-        }
-
-        note('answered the travel rule request');
-    }
-
+    // Paxos can add the travel rule hold after the deposit first appears, so
+    // keep checking for it until the deposit settles.
+    let answered = false;
     const settled = await until('the deposit to complete', async () => {
         const t = await paxos.getTransfer(deposit.id!);
+
+        if (!answered && t.secondary_status?.name === 'TRAVEL_RULE_INFO_REQUESTED') {
+            await save('GetTransfer.crypto_deposit.travel_rule', t);
+
+            if (!optional) {
+                throw new Error(
+                    'Deposit is held for travel rule info and the update scope is missing',
+                );
+            }
+
+            try {
+                await paxos.updateCryptoDeposit(t.id!, {
+                    identity_id: process.env.PAXOS_IDENTITY_ID ?? t.identity_id!,
+                    originator_address_info: {
+                        institution_info: {
+                            institution_name:
+                                process.env.PAXOS_INSTITUTION_NAME ?? 'Company',
+                        },
+                    },
+                });
+            } catch (err) {
+                if (!(err instanceof PaxosApiError && err.status === 409)) {
+                    throw err;
+                }
+            }
+
+            answered = true;
+            note('answered the travel rule request');
+        }
 
         return t.status === 'PENDING' ? undefined : t;
     });
@@ -340,35 +354,38 @@ await check('deposit 1 USDG to an ARBITRUM_ONE deposit address', async () => {
     }
 });
 
-const rule = await check('create a WIRE to USDG rule delivering to ARBITRUM_ONE', async () => {
-    const rules = await paxos.listOrchestrationRules({});
-    const reuse = rules.items?.find(
-        (r) =>
-            r.status === 'ACTIVE' &&
-            r.destination?.crypto?.network === 'ARBITRUM_ONE' &&
-            r.destination_asset === 'USDG',
-    );
-    const res =
-        reuse ??
-        (
-            await paxos.createOrchestrationRule({
-                ref_id: `probe-rule-${runId}`,
-                nickname: 'Auto mint USDG to the treasury wallet',
-                profile_id: profileId,
-                source_asset: 'USD',
-                destination_asset: 'USDG',
-                source: { fiat: { network: 'WIRE', account_type: 'ABA' } },
-                destination: {
-                    crypto: { address: account.address, network: 'ARBITRUM_ONE' },
-                },
-            })
-        ).rule;
+const rule = await check(
+    'create a WIRE to USDG rule delivering to ARBITRUM_ONE',
+    async () => {
+        const rules = await paxos.listOrchestrationRules({});
+        const reuse = rules.items?.find(
+            (r) =>
+                r.status === 'ACTIVE' &&
+                r.destination?.crypto?.network === 'ARBITRUM_ONE' &&
+                r.destination_asset === 'USDG',
+        );
+        const res =
+            reuse ??
+            (
+                await paxos.createOrchestrationRule({
+                    ref_id: `probe-rule-${runId}`,
+                    nickname: 'Auto mint USDG to the treasury wallet',
+                    profile_id: profileId,
+                    source_asset: 'USD',
+                    destination_asset: 'USDG',
+                    source: { fiat: { network: 'WIRE', account_type: 'ABA' } },
+                    destination: {
+                        crypto: { address: account.address, network: 'ARBITRUM_ONE' },
+                    },
+                })
+            ).rule;
 
-    note(`rule status ${res?.status}`);
-    await save('CreateOrchestrationRule', { rule: res });
+        note(`rule status ${res?.status}`);
+        await save('CreateOrchestrationRule', { rule: res });
 
-    return res;
-});
+        return res;
+    },
+);
 
 await check('simulate a sandbox wire deposit that triggers the rule', async () => {
     const memo = rule?.source?.fiat?.memo_id;
@@ -377,7 +394,10 @@ await check('simulate a sandbox wire deposit that triggers the rule', async () =
         throw new Error('The rule response carried no memo_id');
     }
 
-    await save('ListFiatDepositInstructions', await paxos.listFiatDepositInstructions({}));
+    await save(
+        'ListFiatDepositInstructions',
+        await paxos.listFiatDepositInstructions({}),
+    );
 
     const bank = {
         country: 'USA',

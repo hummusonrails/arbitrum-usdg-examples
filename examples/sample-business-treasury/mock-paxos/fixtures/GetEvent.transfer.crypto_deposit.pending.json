@@ -1,0 +1,15 @@
+{
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "transfer.crypto_deposit.pending",
+    "object_type": "transfer_status_change",
+    "object": {
+        "crypto_network": "ARBITRUM_ONE",
+        "crypto_tx_hash": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdabababababababababababab",
+        "crypto_tx_index": "0",
+        "id": "00000000-0000-4000-8000-000000000002",
+        "profile_id": "00000000-0000-4000-8000-000000000003",
+        "status": "PENDING",
+        "type": "CRYPTO_DEPOSIT"
+    },
+    "created_at": "2026-10-20T10:18:19.849Z"
+}

@@ -1,0 +1,24 @@
+{
+    "id": "00000000-0000-4000-8000-000000000001",
+    "customer_id": "00000000-0000-4000-8000-000000000002",
+    "profile_id": "00000000-0000-4000-8000-000000000003",
+    "ref_id": "00000000-0000-4000-8000-000000000004",
+    "amount": "1",
+    "total": "1",
+    "fee": "0",
+    "asset": "USDG",
+    "balance_asset": "USDG",
+    "direction": "DEBIT",
+    "type": "CRYPTO_WITHDRAWAL",
+    "status": "FAILED",
+    "secondary_status": {
+        "name": "TRAVEL_RULE_REJECTED",
+        "detail": "This transfer was rejected due to failing travel rule checks."
+    },
+    "created_at": "2026-10-20T10:18:02.310037Z",
+    "updated_at": "2026-10-20T10:18:12.559528Z",
+    "destination_address": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "crypto_network": "ARBITRUM_ONE",
+    "auto_conversion": {},
+    "notional_value": "1.00"
+}

@@ -1,0 +1,15 @@
+{
+    "id": "00000000-0000-4000-8000-000000000001",
+    "network": "ARBITRUM_ONE",
+    "address": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "verification_method": "SIGNATURE",
+    "status": "PENDING",
+    "signature_verification": {
+        "message": "Verify ownership of 0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\nNonce: cc33c90c5f7d241f",
+        "nonce": "cc33c90c5f7d241f"
+    },
+    "created_at": "2026-10-20T10:17:58.129364506Z",
+    "updated_at": "2026-10-20T10:17:58.129364506Z",
+    "expires_at": "2026-10-27T10:17:58.129364506Z",
+    "ref_id": "probe-verify-1792491474627"
+}
