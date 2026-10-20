@@ -482,7 +482,7 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
             'GET',
             /^\/v2\/orchestration\/orchestrations$/,
             ({ res, q }) => {
-                const refIds = q.getAll('ref_ids');
+                const refIds = q.getAll('ref_id');
                 const items = [...orchestrations.values()]
                     .filter((o) => refIds.length === 0 || refIds.includes(o.ref_id))
                     .reverse()

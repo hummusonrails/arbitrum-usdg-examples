@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS actions (
     step TEXT NOT NULL,
     orchestration_id TEXT,
     deposit_tx_hash TEXT,
+    deposit_raw_tx TEXT,
     transfer_id TEXT,
+    convert_attempt INTEGER NOT NULL DEFAULT 0,
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
