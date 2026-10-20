@@ -1,0 +1,28 @@
+{
+    "name": "arbitrum-usdg-examples",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Runnable examples for building with USDG on Arbitrum One.",
+    "author": "Ben Greenberg",
+    "license": "MIT",
+    "type": "module",
+    "packageManager": "pnpm@10.13.1",
+    "engines": {
+        "node": ">=22.13.0"
+    },
+    "scripts": {
+        "check": "pnpm -r --if-present typecheck",
+        "test": "pnpm -r --if-present test",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "eslint": "^9.0.0",
+        "prettier": "^3.6.0",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.0",
+        "typescript-eslint": "^8.40.0"
+    }
+}
