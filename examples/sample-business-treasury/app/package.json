@@ -7,8 +7,10 @@
         "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
         "typecheck": "tsc --noEmit -p .",
         "dev": "next dev",
-        "build": "next build",
-        "start": "next start"
+        "build": "TREASURY_LOOP=off next build",
+        "start": "next start",
+        "setup": "tsx --conditions=react-server --env-file-if-exists=.env scripts/setup.ts",
+        "dev:mock": "tsx scripts/dev-mock.ts"
     },
     "dependencies": {
         "@arbitrum-usdg/paxos-client": "workspace:*",
@@ -17,7 +19,8 @@
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
         "server-only": "^0.0.1",
-        "viem": "^2.38.0"
+        "viem": "^2.38.0",
+        "@arbitrum-usdg/mock-paxos": "workspace:*"
     },
     "devDependencies": {
         "@types/react": "^19.3.0",

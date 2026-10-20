@@ -1,11 +1,10 @@
 import { handleWebhook } from '@/server/events';
-import { getDb } from '@/server/store';
+import { getCtx } from '@/server/runtime';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-    return handleWebhook(req, {
-        db: getDb(),
-        apiKey: process.env.WEBHOOK_API_KEY ?? '',
-    });
+    const ctx = getCtx();
+
+    return handleWebhook(req, { db: ctx.db, apiKey: ctx.config.webhookApiKey });
 }

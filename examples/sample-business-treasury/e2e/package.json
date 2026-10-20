@@ -1,0 +1,15 @@
+{
+    "name": "sample-business-treasury-e2e",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "pnpm --filter sample-business-treasury build && tsx --test --test-concurrency=1 test/*.e2e.ts",
+        "typecheck": "tsc --noEmit -p ."
+    },
+    "dependencies": {
+        "@arbitrum-usdg/usdg": "workspace:*",
+        "sample-business-treasury": "workspace:*",
+        "viem": "^2.38.0"
+    }
+}
