@@ -4,7 +4,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "probe": "tsx --env-file-if-exists=.env scripts/probe.ts"
+        "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
+        "typecheck": "tsc --noEmit -p ."
     },
     "dependencies": {
         "@arbitrum-usdg/paxos-client": "workspace:*",
