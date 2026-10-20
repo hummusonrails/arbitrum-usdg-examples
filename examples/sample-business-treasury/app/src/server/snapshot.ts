@@ -17,6 +17,7 @@ export type Snapshot = {
         paxosUsdg: string;
         walletUsdg: string;
         inFlight: string;
+        converting: string;
     };
     health: {
         paxos: boolean;
@@ -60,11 +61,17 @@ export async function getSnapshot(
     const balanceOf = (asset: string) =>
         paxosBalances?.items?.find((b) => b.asset === asset)?.available ?? '0';
     const actions = listActions(ctx.db);
-    const inFlight = actions
-        .filter(
-            (a) => a.kind === 'redeem' && ['processing', 'stuck'].includes(a.status),
-        )
-        .reduce((sum, a) => sum + BigInt(a.amount_units), 0n);
+    const openRedeems = actions.filter(
+        (a) => a.kind === 'redeem' && ['processing', 'stuck'].includes(a.status),
+    );
+    const sum = (rows: typeof actions) =>
+        rows.reduce((total, a) => total + BigInt(a.amount_units), 0n);
+    // Sent from the wallet but not yet credited at Paxos.
+    const inFlight = sum(
+        openRedeems.filter((a) => a.step === 'deposit' || a.step === 'travel_rule'),
+    );
+    // Credited at Paxos and being converted to USD for the bank.
+    const converting = sum(openRedeems.filter((a) => a.step === 'convert'));
     const walletUsdg = health ? fromUnits(health.usdg) : '0';
 
     history.push({ t: Date.now(), walletUsdg });
@@ -94,6 +101,7 @@ export async function getSnapshot(
             paxosUsdg: balanceOf('USDG'),
             walletUsdg,
             inFlight: fromUnits(inFlight),
+            converting: fromUnits(converting),
         },
         health: {
             paxos: paxosBalances !== undefined,

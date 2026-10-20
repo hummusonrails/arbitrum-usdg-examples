@@ -1,3 +1,5 @@
+import { OverviewPage } from '@/components/OverviewPage';
+
 export default function Page() {
-    return <main>Treasury Ops</main>;
+    return <OverviewPage />;
 }
