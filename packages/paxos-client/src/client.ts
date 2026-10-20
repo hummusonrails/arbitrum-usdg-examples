@@ -17,7 +17,8 @@ export type Orchestration = Schemas['Orchestration'];
 export type Transfer = Schemas['Transfer'];
 export type PaxosEvent = Schemas['Event'];
 
-export const PAXOS_SCOPES = [
+// Scopes every treasury credential needs.
+export const CORE_SCOPES = [
     'events:read_event',
     'funding:read_profile',
     'orchestration:read_orchestration',
@@ -32,6 +33,22 @@ export const PAXOS_SCOPES = [
     'transfer:write_deposit_address',
     'transfer:write_sandbox_fiat_deposit',
 ];
+
+// Scopes for steps Paxos enables per organization: answering travel rule
+// requests on deposits, verifying wallet ownership, and adding bank accounts.
+// Requesting a scope a credential lacks fails authentication, so these are
+// opt in.
+export const OPTIONAL_SCOPES = [
+    'transfer:update_crypto_deposit',
+    'transfer:read_crypto_destination_address',
+    'transfer:write_fiat_account',
+    'address:read_ownership_proofs',
+    'address:write_ownership_proofs',
+];
+
+export function scopesFor(opts: { optional: boolean }): string[] {
+    return opts.optional ? [...CORE_SCOPES, ...OPTIONAL_SCOPES] : CORE_SCOPES;
+}
 
 export const PAXOS_ENV = {
     sandbox: {
@@ -169,6 +186,36 @@ export function createPaxosClient(opts: PaxosClientOptions) {
             unwrap(
                 'ListFiatDepositInstructions',
                 api.GET('/transfer/fiat-deposit-instructions', { params: { query } }),
+            ),
+        updateCryptoDeposit: (id: string, body: Body<'UpdateCryptoDeposit'>) =>
+            unwrap(
+                'UpdateCryptoDeposit',
+                api.POST('/transfer/crypto-deposits/{id}/update', {
+                    params: { path: { id } },
+                    body,
+                }),
+            ),
+        createAddressVerification: (body: Body<'CreateVerification'>) =>
+            unwrap(
+                'CreateVerification',
+                api.POST('/addresses/verifications', { body }),
+            ),
+        submitAddressVerificationSignature: (body: Body<'SubmitSignature'>) =>
+            unwrap(
+                'SubmitSignature',
+                api.POST('/addresses/verifications/signature', { body }),
+            ),
+        getAddressVerification: (id: string) =>
+            unwrap(
+                'GetVerification',
+                api.GET('/addresses/verifications/{id}', { params: { path: { id } } }),
+            ),
+        createFiatAccount: (body: Body<'CreateFiatAccount'>) =>
+            unwrap('CreateFiatAccount', api.POST('/transfer/fiat-accounts', { body })),
+        getFiatAccount: (id: string) =>
+            unwrap(
+                'GetFiatAccount',
+                api.GET('/transfer/fiat-accounts/{id}', { params: { path: { id } } }),
             ),
         initiateSandboxFiatDeposit: (body: Body<'InitiateSandboxFiatDeposit'>) =>
             unwrap(
