@@ -2,6 +2,7 @@
 
 import { shortAddress } from '@/lib/format';
 
+import { ExplorerLink } from './ExplorerLink';
 import { useSnapshot } from './useSnapshot';
 
 const NETWORK: Record<string, string> = {
@@ -22,10 +23,9 @@ export function Header() {
                 </p>
             </div>
             {s && (
-                <a
-                    href={`${s.explorer}/address/${s.wallet}`}
-                    target="_blank"
-                    rel="noreferrer"
+                <ExplorerLink
+                    explorer={s.explorer}
+                    path={`address/${s.wallet}`}
                     className="flex items-center gap-3 text-right"
                 >
                     <span>
@@ -39,7 +39,7 @@ export function Header() {
                     <span className="grid size-9 place-items-center rounded-full bg-navy font-mono text-[11px] text-white">
                         {s.wallet.slice(2, 4).toUpperCase()}
                     </span>
-                </a>
+                </ExplorerLink>
             )}
         </header>
     );

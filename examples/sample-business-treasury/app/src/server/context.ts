@@ -18,7 +18,10 @@ export function createCtx(env: NodeJS.ProcessEnv = process.env): Ctx {
             oauthUrl: config.paxos.oauthUrl,
             clientId: config.paxos.clientId,
             clientSecret: config.paxos.clientSecret,
-            scopes: scopesFor({ optional: config.paxos.optionalScopes }),
+            scopes: scopesFor({
+                optional: config.paxos.optionalScopes,
+                sandbox: config.mode !== 'production',
+            }),
         }),
     };
 }

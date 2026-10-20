@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { fromUnits, toUnits } from '@arbitrum-usdg/usdg';
+import { fromPaxosAmount, fromUnits, toUnits } from '@arbitrum-usdg/usdg';
 import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
@@ -39,6 +39,12 @@ export type MockPaxosOptions = {
 };
 
 const now = () => new Date().toISOString();
+// Paxos returns transfer amounts as fixed point strings, e.g. "7.00000000".
+const paxosAmount = (units: bigint) => {
+    const [whole, frac = ''] = fromUnits(units).split('.');
+
+    return `${whole}.${frac.padEnd(8, '0')}`;
+};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function startMockPaxos(opts: MockPaxosOptions) {
@@ -63,7 +69,7 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
     const events: PaxosEvent[] = [];
     const seenLogs = new Set<string>();
     const failNext = new Set<'redeem' | 'mint'>();
-    const tamperNext = new Set<'mint'>();
+    const tamperNext = new Set<'mint' | 'deposit'>();
     let watchedFrom = await chain.blockNumber();
 
     function credit(asset: string, units: bigint) {
@@ -202,7 +208,11 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
                 ref_id: o.ref_id,
             });
 
-            o.destination_transfer = { transfer_id: t.id, status: 'PENDING' };
+            // The sandbox reports the orchestration complete before its
+            // withdrawal settles on chain, so the transfer record lags.
+            o.destination_transfer = { transfer_id: t.id, status: 'COMPLETED' };
+            setStatus(o, 'COMPLETED', { status_details: undefined });
+            await sleep(stepMs * 2);
 
             if (failNext.delete('mint')) {
                 credit(source, amount);
@@ -210,14 +220,6 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
                     secondary_status: {
                         name: 'TRAVEL_RULE_REJECTED',
                         detail: 'This transfer was rejected due to failing travel rule checks.',
-                    },
-                });
-                setStatus(o, 'FAILED', {
-                    status_details: {
-                        destination_transfer_failed: {
-                            message: 'The destination transfer failed.',
-                            transfer_id: t.id,
-                        },
                     },
                 });
 
@@ -228,36 +230,23 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
 
             try {
                 hash = await chain.send(getAddress(crypto.address), amount);
-            } catch (err) {
+            } catch {
                 credit(source, amount);
                 settle(t, 'FAILED');
-                setStatus(o, 'FAILED', {
-                    fail_reason: {
-                        detail: `withdrawal failed: ${String(err).slice(0, 200)}`,
-                    },
-                    status_details: {
-                        destination_transfer_failed: {
-                            message: 'The destination transfer failed.',
-                            transfer_id: t.id,
-                        },
-                    },
-                });
 
                 return;
             }
 
             const reported = tamperNext.delete('mint')
-                ? fromUnits(amount + toUnits('0.5'))
-                : (o.source_amount as string);
+                ? amount + toUnits('0.5')
+                : amount;
 
             settle(t, 'COMPLETED', {
                 crypto_tx_hash: hash,
                 crypto_tx_index: '0',
-                amount: reported,
-                total: reported,
+                amount: paxosAmount(reported),
+                total: paxosAmount(reported),
             });
-            o.destination_transfer = { transfer_id: t.id, status: 'COMPLETED' };
-            setStatus(o, 'COMPLETED', { status_details: undefined });
 
             return;
         }
@@ -348,7 +337,10 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
             newTransfer({
                 type: 'CRYPTO_DEPOSIT',
                 direction: 'CREDIT',
-                amount: fromUnits(log.value),
+                // A tampered deposit reports more than arrived onchain.
+                amount: paxosAmount(
+                    log.value + (tamperNext.delete('deposit') ? toUnits('0.5') : 0n),
+                ),
                 asset: 'USDG',
                 identity_id: identityId,
                 destination_address: log.to,
@@ -471,6 +463,18 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
 
                 if (existing) {
                     problem(res, 409, 'Already Exists', { meta: { existing } });
+
+                    return;
+                }
+
+                const source = String(body.source_asset);
+                const needed = toUnits(String(body.source_amount));
+
+                if ((balances.get(source) ?? 0n) < needed) {
+                    problem(res, 403, 'Insufficient Funds', {
+                        detail: `insufficient ${source} balance in the profile`,
+                        type: 'https://developer.paxos.com/docs/v2/problems/insufficient-funds',
+                    });
 
                     return;
                 }
@@ -619,7 +623,7 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
                 delete t.secondary_status;
                 send(res, 200, t);
                 await sleep(stepMs);
-                credit('USDG', toUnits(t.amount as string));
+                credit('USDG', fromPaxosAmount(t.amount as string));
                 settle(t, 'COMPLETED');
             },
         ],
@@ -847,9 +851,24 @@ export async function startMockPaxos(opts: MockPaxosOptions) {
         ],
         [
             'POST',
+            /^\/mock\/bank-status$/,
+            async ({ req, res }) => {
+                const body = await readBody(req);
+
+                for (const account of fiatAccounts.values()) {
+                    account.status = body.status;
+                }
+
+                send(res, 200, { ok: true });
+            },
+        ],
+        [
+            'POST',
             /^\/mock\/tamper-next$/,
-            ({ res }) => {
-                tamperNext.add('mint');
+            async ({ req, res }) => {
+                const body = await readBody(req);
+
+                tamperNext.add(body.kind === 'deposit' ? 'deposit' : 'mint');
                 send(res, 200, { ok: true });
             },
         ],

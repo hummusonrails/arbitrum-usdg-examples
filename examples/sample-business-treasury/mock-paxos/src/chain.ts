@@ -33,29 +33,40 @@ export function createForkChain(rpcUrl: string) {
         transport,
     }).extend(walletActions);
     let ready: Promise<void> | undefined;
+    let queue: Promise<unknown> = Promise.resolve();
 
     async function prepareHolder() {
         await testClient.impersonateAccount({ address: HOLDER });
         await testClient.setBalance({ address: HOLDER, value: 10n ** 20n });
     }
 
+    async function sendNow(to: Address, units: bigint): Promise<Hex> {
+        ready ??= prepareHolder();
+        await ready;
+
+        const hash = await testClient.writeContract({
+            account: HOLDER,
+            chain: arbitrum,
+            ...token,
+            functionName: 'transfer',
+            args: [to, units],
+        });
+
+        await publicClient.waitForTransactionReceipt({ hash });
+
+        return hash;
+    }
+
     return {
         // Sends USDG from the funding holder, the way a Paxos withdrawal lands.
-        async send(to: Address, units: bigint): Promise<Hex> {
-            ready ??= prepareHolder();
-            await ready;
+        // Sends go out one at a time: parallel sends from the same impersonated
+        // account would race for the same nonce.
+        send(to: Address, units: bigint): Promise<Hex> {
+            const run = queue.then(() => sendNow(to, units));
 
-            const hash = await testClient.writeContract({
-                account: HOLDER,
-                chain: arbitrum,
-                ...token,
-                functionName: 'transfer',
-                args: [to, units],
-            });
+            queue = run.catch((err) => console.error('mock withdrawal failed', err));
 
-            await publicClient.waitForTransactionReceipt({ hash });
-
-            return hash;
+            return run;
         },
 
         async blockNumber(): Promise<bigint> {

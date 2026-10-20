@@ -7,6 +7,7 @@ import { formatAmount, shortAddress, timeOf } from '@/lib/format';
 import { LEDGER_STATUS } from '@/lib/words';
 
 import { Card } from './Card';
+import { ExplorerLink } from './ExplorerLink';
 import { useSnapshot } from './useSnapshot';
 
 export function LedgerTable() {
@@ -67,14 +68,13 @@ export function LedgerTable() {
                                 </td>
                                 <td className="px-4 py-3 font-mono text-[12px]">
                                     {r.crypto_tx_hash && (
-                                        <a
-                                            href={`${s.explorer}/tx/${r.crypto_tx_hash}`}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                        <ExplorerLink
+                                            explorer={s.explorer}
+                                            path={`tx/${r.crypto_tx_hash}`}
                                             className="hover:text-blue"
                                         >
                                             {shortAddress(r.crypto_tx_hash)}
-                                        </a>
+                                        </ExplorerLink>
                                     )}
                                 </td>
                                 <td className="px-4 py-3">

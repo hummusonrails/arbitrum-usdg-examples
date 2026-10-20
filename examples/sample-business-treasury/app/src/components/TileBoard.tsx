@@ -7,6 +7,8 @@ import { formatAmount, shortAddress } from '@/lib/format';
 import type { Snapshot } from '@/lib/types';
 import { LEDGER_STATUS } from '@/lib/words';
 
+import { ExplorerLink } from './ExplorerLink';
+
 type Row = Snapshot['ledger'][number];
 type Lane = { key: string; title: string; rows: Row[] };
 type Flight = { row: Row; from: DOMRect; to: DOMRect };
@@ -39,7 +41,7 @@ function Cell({
     rippling,
 }: {
     row: Row;
-    explorer: string;
+    explorer: string | null;
     rippling: boolean;
 }) {
     const alert = ['mismatch', 'stuck', 'failed'].includes(row.status);
@@ -56,14 +58,13 @@ function Cell({
                     {formatAmount(row.amount)}
                 </span>
                 {row.crypto_tx_hash ? (
-                    <a
-                        href={`${explorer}/tx/${row.crypto_tx_hash}`}
-                        target="_blank"
-                        rel="noreferrer"
+                    <ExplorerLink
+                        explorer={explorer}
+                        path={`tx/${row.crypto_tx_hash}`}
                         className="font-mono text-[11px] text-navy-2/60 hover:text-blue"
                     >
                         {shortAddress(row.crypto_tx_hash)}
-                    </a>
+                    </ExplorerLink>
                 ) : (
                     <span className="text-[11px] text-navy-2/50">
                         Waiting for Arbitrum

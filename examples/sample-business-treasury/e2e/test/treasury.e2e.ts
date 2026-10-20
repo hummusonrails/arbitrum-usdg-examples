@@ -110,7 +110,7 @@ before(async () => {
         anvilPort: 8547,
         dbPath: join(mkdtempSync(join(tmpdir(), 'treasury-e2e-')), 'treasury.db'),
         loopMs: 1000,
-        env: { POLICY_START_PAUSED: '1' },
+        env: { POLICY_START_PAUSED: '1', EVENT_POLL_MS: '1000' },
         quiet: process.env.E2E_VERBOSE !== '1',
     });
     chain = createPublicClient({ chain: arbitrum, transport: http(stack.rpcUrl) });
@@ -234,6 +234,7 @@ test('the same webhook event delivered twice and polled is applied once', async 
         events: { id: string; type: string }[];
     };
     const event = events.events.at(-1)!;
+    const before = await state();
     const post = () =>
         fetch(`${stack.appUrl}/api/webhooks/paxos`, {
             method: 'POST',
@@ -258,6 +259,11 @@ test('the same webhook event delivered twice and polled is applied once', async 
     const s = await state();
 
     assert.equal(s.feed.filter((l) => l.text.includes(event.id)).length, 1);
+    assert.equal(s.actions.length, before.actions.length);
+    assert.deepEqual(
+        s.ledger.map((r) => [r.id, r.status]),
+        before.ledger.map((r) => [r.id, r.status]),
+    );
 });
 
 test('without gas the redeem preflight refuses and nothing is sent', async () => {
@@ -285,6 +291,105 @@ test('a Paxos amount that disagrees with the chain shows as a mismatch', async (
     );
 
     assert.equal(mismatched.onchain_amount, '7');
+});
+
+test('a deposit Paxos records for more than arrived shows the redeem as a mismatch', async () => {
+    await mock('/mock/tamper-next', { kind: 'deposit' });
+
+    const res = await api({ action: 'redeem', amount: '3' });
+    const refId = (res.body.snapshot as Snapshot).actions[0]!.ref_id;
+    const mismatched = await until('a redeem mismatch', (s) =>
+        row(s, refId)?.status === 'mismatch' ? row(s, refId) : undefined,
+    );
+
+    assert.equal(mismatched.onchain_amount, '3');
+});
+
+test('a mint Paxos rejects is marked failed with its reason and the treasury keeps working', async () => {
+    const res = await api({ action: 'mint', amount: '5000000' });
+
+    assert.equal(res.status, 409);
+    assert.match(String(res.body.message), /insufficient/i);
+
+    const failed = await until('the rejected mint to show as failed', (x) =>
+        x.actions.find((a) => a.kind === 'mint' && a.amount === '5000000'),
+    );
+
+    assert.equal(failed.status, 'failed');
+    assert.match(String(failed.error), /insufficient/i);
+
+    const next = await api({ action: 'mint', amount: '1' });
+    const refId = (next.body.snapshot as Snapshot).actions[0]!.ref_id;
+
+    await until(
+        'the next mint to complete',
+        (x) => action(x, refId)?.status === 'completed',
+    );
+});
+
+test('a redeem waits for an approved bank account before any USDG moves', async () => {
+    await mock('/mock/bank-status', { status: 'PENDING' });
+
+    const before = await walletUsdg();
+    const res = await api({ action: 'redeem', amount: '1' });
+
+    await mock('/mock/bank-status', { status: 'APPROVED' });
+    assert.equal(res.status, 409);
+    assert.equal(res.body.reason, 'no_bank');
+    assert.equal(await walletUsdg(), before);
+});
+
+test('a wire under another rule is not counted as a treasury inflow', async () => {
+    const other = (await mock('/v2/orchestration/rules', {
+        ref_id: 'someone-else',
+        profile_id: 'mock-profile',
+        source_asset: 'USD',
+        destination_asset: 'USDG',
+        source: { fiat: { network: 'WIRE', account_type: 'ABA' } },
+        destination: {
+            crypto: {
+                address: '0x000000000000000000000000000000000000dEaD',
+                network: 'ARBITRUM_ONE',
+            },
+        },
+    })) as { rule: { source: { fiat: { memo_id: string } } } };
+    const inflows = (await state()).ledger.filter((r) => r.source === 'rule').length;
+
+    await mock('/v2/sandbox/fiat-deposits', {
+        amount: '25.00',
+        asset: 'USD',
+        memo_id: other.rule.source.fiat.memo_id,
+    });
+    await new Promise((r) => setTimeout(r, 5000));
+    assert.equal(
+        (await state()).ledger.filter((r) => r.source === 'rule').length,
+        inflows,
+    );
+});
+
+test('a wire and a mint started at the same moment both settle', async () => {
+    const inflows = (await state()).ledger.filter((r) => r.source === 'rule').length;
+    const [wire, mint] = await Promise.all([
+        api({ action: 'simulateWire', amount: '40.00' }),
+        api({ action: 'mint', amount: '60' }),
+    ]);
+
+    assert.equal(wire.status, 200);
+    assert.equal(mint.status, 200);
+
+    const refId = (mint.body.snapshot as Snapshot).actions.find(
+        (a) => a.kind === 'mint',
+    )!.ref_id;
+
+    await until(
+        'both to settle',
+        (s) =>
+            action(s, refId)?.status === 'completed' &&
+            s.ledger.filter((r) => r.source === 'rule').length === inflows + 1 &&
+            s.ledger
+                .filter((r) => r.source === 'rule')
+                .every((r) => r.status === 'matched'),
+    );
 });
 
 test('restarting during a redeem neither resends USDG nor repeats the conversion', async () => {

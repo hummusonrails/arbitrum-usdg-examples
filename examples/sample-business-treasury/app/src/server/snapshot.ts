@@ -1,9 +1,12 @@
-import { fromUnits, readWalletHealth } from '@arbitrum-usdg/usdg';
+import { fromUnits, readWalletHealth, USDG } from '@arbitrum-usdg/usdg';
 
 import { currentBand, listActions, type ActionRow, type Ctx } from './actions.ts';
 import { getKv } from './db.ts';
 import type { PolicyDecision } from './policy.ts';
 import { listLedger, type LedgerRow } from './reconcile.ts';
+
+// The live stream carries the most recent records; older ones stay in the database.
+const LIST_LIMIT = 200;
 
 export type FeedLine = { t: string; text: string };
 
@@ -11,7 +14,8 @@ export type Snapshot = {
     mode: string;
     network: string;
     wallet: string;
-    explorer: string;
+    // Null in mock mode, where transactions only exist on the local fork.
+    explorer: string | null;
     balances: {
         paxosUsd: string;
         paxosUsdg: string;
@@ -35,7 +39,10 @@ export type Snapshot = {
     updatedAt: string;
 };
 
-const history: { t: number; walletUsdg: string }[] = [];
+const g = globalThis as typeof globalThis & {
+    __treasuryHistory?: { t: number; walletUsdg: string }[];
+};
+const history = (g.__treasuryHistory ??= []);
 
 function serialize(d: Snapshot['decision']) {
     return d && 'amountUnits' in d
@@ -66,10 +73,25 @@ export async function getSnapshot(
     );
     const sum = (rows: typeof actions) =>
         rows.reduce((total, a) => total + BigInt(a.amount_units), 0n);
-    // Sent from the wallet but not yet credited at Paxos.
-    const inFlight = sum(
-        openRedeems.filter((a) => a.step === 'deposit' || a.step === 'travel_rule'),
+    // Sent from the wallet (mined, so no longer in its balance) but not yet
+    // credited at Paxos. Counting only mined transfers avoids counting the
+    // same USDG in the wallet and in flight at once.
+    const sent = await Promise.all(
+        openRedeems
+            .filter(
+                (a) =>
+                    (a.step === 'deposit' || a.step === 'travel_rule') &&
+                    a.deposit_tx_hash,
+            )
+            .map(async (a) => {
+                const receipt = await ctx.chain.publicClient
+                    .getTransactionReceipt({ hash: a.deposit_tx_hash as `0x${string}` })
+                    .catch(() => undefined);
+
+                return receipt?.status === 'success' ? a : undefined;
+            }),
     );
+    const inFlight = sum(sent.filter((a): a is ActionRow => a !== undefined));
     // Credited at Paxos and being converted to USD for the bank.
     const converting = sum(openRedeems.filter((a) => a.step === 'convert'));
     const walletUsdg = health ? fromUnits(health.usdg) : '0';
@@ -92,10 +114,7 @@ export async function getSnapshot(
         mode: ctx.config.mode,
         network: ctx.config.network,
         wallet: ctx.chain.wallet,
-        explorer:
-            ctx.config.network === 'arbitrumSepolia'
-                ? 'https://sepolia.arbiscan.io'
-                : 'https://arbiscan.io',
+        explorer: ctx.config.mode === 'mock' ? null : USDG[ctx.config.network].explorer,
         balances: {
             paxosUsd: balanceOf('USD'),
             paxosUsdg: balanceOf('USDG'),
@@ -117,17 +136,19 @@ export async function getSnapshot(
             paused: getKv(ctx.db, 'policy_paused') === '1',
         },
         decision: serialize(decision) as Snapshot['decision'],
-        actions: actions.map(({ deposit_raw_tx: _raw, ...a }) => ({
+        actions: actions.slice(0, LIST_LIMIT).map(({ deposit_raw_tx: _raw, ...a }) => ({
             ...a,
             amount: fromUnits(BigInt(a.amount_units)),
         })),
-        ledger: listLedger(ctx).map((r) => ({
-            ...r,
-            amount: fromUnits(BigInt(r.amount_units)),
-            onchain_amount: r.onchain_amount_units
-                ? fromUnits(BigInt(r.onchain_amount_units))
-                : null,
-        })),
+        ledger: listLedger(ctx)
+            .slice(0, LIST_LIMIT)
+            .map((r) => ({
+                ...r,
+                amount: fromUnits(BigInt(r.amount_units)),
+                onchain_amount: r.onchain_amount_units
+                    ? fromUnits(BigInt(r.onchain_amount_units))
+                    : null,
+            })),
         feed,
         history: [...history],
         updatedAt: new Date().toISOString(),

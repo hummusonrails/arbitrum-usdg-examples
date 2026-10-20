@@ -2,6 +2,7 @@
 // Paxos server, the setup command, and the app. Used by `pnpm dev:mock` and
 // by the end to end tests.
 import { spawn, type ChildProcess } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,7 +12,6 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { arbitrum } from 'viem/chains';
 
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
-
 
 export type StackOptions = {
     app: 'dev' | 'start';
@@ -95,6 +95,13 @@ export async function startStack(opts: StackOptions) {
         webhookApiKey: webhookKey,
         pollMs: 500,
     });
+    const dbPath = opts.dbPath ?? join(APP_DIR, 'treasury.mock.db');
+
+    // The fork and the mock start fresh every run, so the records do too.
+    for (const suffix of ['', '-wal', '-shm']) {
+        rmSync(`${dbPath}${suffix}`, { force: true });
+    }
+
     const env: NodeJS.ProcessEnv = {
         ...process.env,
         MODE: 'mock',
@@ -106,8 +113,10 @@ export async function startStack(opts: StackOptions) {
         PAXOS_PROFILE_ID: 'mock-profile',
         PAXOS_BANK_ACCOUNT_ID: '',
         PAXOS_OPTIONAL_SCOPES: '1',
+        PAXOS_IDENTITY_ID: 'mock-identity',
+        PAXOS_INSTITUTION_NAME: 'Acme Co.',
         WEBHOOK_API_KEY: webhookKey,
-        DB_PATH: opts.dbPath ?? join(APP_DIR, 'treasury.mock.db'),
+        DB_PATH: dbPath,
         LOOP_INTERVAL_MS: String(opts.loopMs ?? 3000),
         PORT: String(appPort),
         ...opts.env,

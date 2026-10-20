@@ -85,7 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
                     : paxosEnv.oauth,
             clientId: required(env, 'PAXOS_CLIENT_ID'),
             clientSecret: required(env, 'PAXOS_CLIENT_SECRET'),
-            optionalScopes: env.PAXOS_OPTIONAL_SCOPES !== '0',
+            optionalScopes: env.PAXOS_OPTIONAL_SCOPES === '1',
             profileId: required(env, 'PAXOS_PROFILE_ID'),
             bankAccountId: env.PAXOS_BANK_ACCOUNT_ID?.trim() || undefined,
             identityId: env.PAXOS_IDENTITY_ID?.trim() || undefined,

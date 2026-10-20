@@ -75,8 +75,17 @@ export function ActionBar({ mode }: { mode: string }) {
     function submit(e: FormEvent) {
         e.preventDefault();
 
-        if (!/^\d+(\.\d{1,6})?$/.test(amount)) {
-            setNote({ ok: false, text: 'Enter an amount like 250 or 1234.50' });
+        // A mint spends USD, which moves in cents; a redeem sends USDG, which has six decimals.
+        const valid = open === 'mint' ? /^\d+(\.\d{1,2})?$/ : /^\d+(\.\d{1,6})?$/;
+
+        if (!valid.test(amount)) {
+            setNote({
+                ok: false,
+                text:
+                    open === 'mint'
+                        ? 'Enter a USD amount like 250 or 1234.50'
+                        : 'Enter a USDG amount with at most six decimals',
+            });
 
             return;
         }

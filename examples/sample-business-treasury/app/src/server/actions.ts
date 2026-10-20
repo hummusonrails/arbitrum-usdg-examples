@@ -7,8 +7,13 @@ import {
     type PaxosClient,
     type Transfer,
 } from '@arbitrum-usdg/paxos-client';
-import { fromUnits, readWalletHealth, toUnits } from '@arbitrum-usdg/usdg';
-import type { Address, Hex } from 'viem';
+import {
+    decodeUsdgError,
+    fromPaxosAmount,
+    fromUnits,
+    readWalletHealth,
+} from '@arbitrum-usdg/usdg';
+import { parseTransaction, type Address, type Hex } from 'viem';
 
 import type { Chain } from './chain.ts';
 import type { Config } from './config.ts';
@@ -44,11 +49,26 @@ export type ActionRow = {
 export class PreflightError extends Error {
     constructor(
         readonly reason:
-            'frozen' | 'paused' | 'no_gas' | 'insufficient' | 'no_deposit_address',
+            | 'frozen'
+            | 'paused'
+            | 'no_gas'
+            | 'insufficient'
+            | 'no_deposit_address'
+            | 'no_bank'
+            | 'chain',
         message: string,
     ) {
         super(message);
         this.name = 'PreflightError';
+    }
+}
+
+// An action that was recorded but that Paxos or the chain refused. The
+// action row holds the same reason.
+export class ActionFailedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ActionFailedError';
     }
 }
 
@@ -105,7 +125,7 @@ type LedgerFields = {
     reason?: string | null;
 };
 
-// Inserts or updates one ledger row; reconciliation fills the on-chain side.
+// Inserts or updates one ledger row; reconciliation fills the onchain side.
 export function upsertLedger(db: Db, row: LedgerFields) {
     const existing = db.prepare('SELECT id FROM ledger WHERE id = ?').get(row.id);
 
@@ -150,11 +170,22 @@ function reasonOf(t: Transfer | undefined, o?: Orchestration): string | null {
     return (
         t?.secondary_status?.detail ??
         t?.secondary_status?.name ??
-        Object.values(t?.status_details ?? {})[0]?.toString() ??
+        Object.keys(t?.status_details ?? {})[0] ??
         o?.fail_reason?.detail ??
         (details ? Object.values(details)[0]?.message : undefined) ??
         null
     );
+}
+
+// A readable reason from a Paxos API error, for the dashboard and the log.
+function paxosReason(err: unknown): string {
+    if (err instanceof PaxosApiError) {
+        const body = err.body as { detail?: string; title?: string } | null;
+
+        return body?.detail ?? body?.title ?? `Paxos returned ${err.status}`;
+    }
+
+    return err instanceof Error ? err.message : String(err);
 }
 
 async function createOrReuseOrchestration(
@@ -195,6 +226,11 @@ function mintBody(ctx: Ctx, refId: string, units: bigint) {
     };
 }
 
+function fail(ctx: Ctx, refId: string, status: 'failed' | 'stuck', reason: string) {
+    updateAction(ctx.db, refId, { status, error: reason });
+    upsertLedger(ctx.db, { id: refId, status, reason });
+}
+
 export async function startMint(ctx: Ctx, amountUnits: bigint): Promise<ActionRow> {
     // USD moves in cents, so round the mint up to the next cent.
     const units = ((amountUnits + CENT_UNITS - 1n) / CENT_UNITS) * CENT_UNITS;
@@ -214,12 +250,25 @@ export async function startMint(ctx: Ctx, amountUnits: bigint): Promise<ActionRo
         amount_units: units.toString(),
     });
 
-    const o = await createOrReuseOrchestration(ctx.paxos, mintBody(ctx, refId, units));
+    let o: Orchestration;
+
+    try {
+        o = await createOrReuseOrchestration(ctx.paxos, mintBody(ctx, refId, units));
+    } catch (err) {
+        const reason = paxosReason(err);
+
+        fail(ctx, refId, 'failed', reason);
+        throw new ActionFailedError(reason);
+    }
 
     updateAction(ctx.db, refId, { orchestration_id: o.id ?? null });
     await onOrchestration(ctx, o);
 
     return getAction(ctx.db, refId)!;
+}
+
+function bankAccountId(ctx: Ctx): string | undefined {
+    return ctx.config.paxos.bankAccountId ?? getKv(ctx.db, 'bank_account_id');
 }
 
 async function preflightRedeem(ctx: Ctx, units: bigint): Promise<Address> {
@@ -266,13 +315,35 @@ async function preflightRedeem(ctx: Ctx, units: bigint): Promise<Address> {
         );
     }
 
+    // USDG only leaves the wallet when the bank it will pay out to is ready.
+    const bankId = bankAccountId(ctx);
+    const bank = bankId
+        ? await ctx.paxos.getFiatAccount(bankId).catch(() => undefined)
+        : undefined;
+
+    if (bank?.status !== 'APPROVED') {
+        throw new PreflightError(
+            'no_bank',
+            bankId
+                ? `The bank account is ${bank?.status ?? 'not reachable'}. Redeems wait until it is APPROVED.`
+                : 'Set up a bank account first. Run setup or set PAXOS_BANK_ACCOUNT_ID.',
+        );
+    }
+
     return depositAddress as Address;
 }
 
 export async function startRedeem(ctx: Ctx, amountUnits: bigint): Promise<ActionRow> {
     const depositAddress = await preflightRedeem(ctx, amountUnits);
+    let signed: { hash: Hex; raw: Hex };
+
+    try {
+        signed = await ctx.chain.signUsdgTransfer(depositAddress, amountUnits);
+    } catch (err) {
+        throw new PreflightError('chain', decodeUsdgError(err).message);
+    }
+
     const refId = refIdFor(ctx.db, 'redeem');
-    const { hash, raw } = await ctx.chain.signUsdgTransfer(depositAddress, amountUnits);
 
     // Record the signed transaction before broadcasting it, so a restart can
     // rebroadcast the same transaction instead of sending a second one.
@@ -282,35 +353,44 @@ export async function startRedeem(ctx: Ctx, amountUnits: bigint): Promise<Action
               deposit_raw_tx, created_at, updated_at)
              VALUES (?, 'redeem', ?, 'processing', 'deposit', ?, ?, ?, ?)`,
         )
-        .run(refId, amountUnits.toString(), hash, raw, now(), now());
+        .run(refId, amountUnits.toString(), signed.hash, signed.raw, now(), now());
     upsertLedger(ctx.db, {
         id: refId,
         ref_id: refId,
         source: 'app',
         direction: 'out',
         amount_units: amountUnits.toString(),
-        crypto_tx_hash: hash,
+        crypto_tx_hash: signed.hash,
     });
-    await ctx.chain.broadcast(raw);
+
+    try {
+        await ctx.chain.broadcast(signed.raw);
+    } catch (err) {
+        const reason = `The USDG transfer was not accepted by Arbitrum: ${decodeUsdgError(err).message}`;
+
+        fail(ctx, refId, 'stuck', reason);
+        throw new ActionFailedError(reason);
+    }
 
     return getAction(ctx.db, refId)!;
 }
 
 async function startConvert(ctx: Ctx, action: ActionRow) {
-    const bankAccountId =
-        ctx.config.paxos.bankAccountId ?? getKv(ctx.db, 'bank_account_id');
+    const bankId = bankAccountId(ctx);
     const attempt = action.convert_attempt;
     const refId =
         attempt === 0
             ? `${action.ref_id}-convert`
             : `${action.ref_id}-convert-${attempt}`;
 
-    if (!bankAccountId) {
-        updateAction(ctx.db, action.ref_id, {
-            status: 'stuck',
-            step: 'convert',
-            error: 'No bank account is set up. Run setup or set PAXOS_BANK_ACCOUNT_ID.',
-        });
+    if (!bankId) {
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            'No bank account is set up. Run setup or set PAXOS_BANK_ACCOUNT_ID.',
+        );
+        updateAction(ctx.db, action.ref_id, { step: 'convert' });
 
         return;
     }
@@ -321,14 +401,28 @@ async function startConvert(ctx: Ctx, action: ActionRow) {
         error: null,
     });
 
-    const o = await createOrReuseOrchestration(ctx.paxos, {
-        ref_id: refId,
-        source_asset: 'USDG',
-        source_amount: fromUnits(BigInt(action.amount_units)),
-        destination_asset: 'USD',
-        source: { profile: { profile_id: ctx.config.paxos.profileId } },
-        destination: { fiat: { bank_account_id: bankAccountId, memo: action.ref_id } },
-    });
+    let o: Orchestration;
+
+    try {
+        o = await createOrReuseOrchestration(ctx.paxos, {
+            ref_id: refId,
+            source_asset: 'USDG',
+            source_amount: fromUnits(BigInt(action.amount_units)),
+            destination_asset: 'USD',
+            source: { profile: { profile_id: ctx.config.paxos.profileId } },
+            destination: { fiat: { bank_account_id: bankId, memo: action.ref_id } },
+        });
+    } catch (err) {
+        // The USDG is safe in the Paxos account; the operator can retry.
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            `Paxos did not start the conversion to USD: ${paxosReason(err)}`,
+        );
+
+        return;
+    }
 
     updateAction(ctx.db, action.ref_id, { orchestration_id: o.id ?? null });
     await onOrchestration(ctx, o);
@@ -339,6 +433,38 @@ function actionForOrchestration(db: Db, o: Orchestration): ActionRow | undefined
     const base = ref.replace(/-convert(-\d+)?$/, '');
 
     return getAction(db, base);
+}
+
+// Evaluates a mint from its orchestration and, above all, its withdrawal
+// transfer: the orchestration can read COMPLETED before the withdrawal has
+// settled or after it has failed.
+async function evaluateMint(ctx: Ctx, action: ActionRow, o: Orchestration) {
+    const status = o.status ?? 'PENDING';
+    const transferId = o.destination_transfer?.transfer_id;
+    const transfer = transferId ? await ctx.paxos.getTransfer(transferId) : undefined;
+
+    upsertLedger(ctx.db, {
+        id: action.ref_id,
+        paxos_status: transfer?.status ?? status,
+        orchestration_id: o.id ?? null,
+        transfer_id: transferId ?? null,
+        crypto_tx_hash: transfer?.crypto_tx_hash || null,
+    });
+
+    if (transfer?.status === 'FAILED' || status === 'FAILED' || status === 'REJECTED') {
+        fail(
+            ctx,
+            action.ref_id,
+            'failed',
+            reasonOf(transfer, o) ?? 'Paxos did not deliver the USDG.',
+        );
+    } else if (status === 'COMPLETED' && transfer?.status === 'COMPLETED') {
+        updateAction(ctx.db, action.ref_id, {
+            status: 'completed',
+            step: 'done',
+            error: null,
+        });
+    }
 }
 
 export async function onOrchestration(ctx: Ctx, o: Orchestration): Promise<void> {
@@ -358,33 +484,7 @@ export async function onOrchestration(ctx: Ctx, o: Orchestration): Promise<void>
     }
 
     if (action.kind === 'mint') {
-        const transferId = o.destination_transfer?.transfer_id;
-        const transfer = transferId
-            ? await ctx.paxos.getTransfer(transferId)
-            : undefined;
-
-        upsertLedger(ctx.db, {
-            id: action.ref_id,
-            paxos_status: status,
-            orchestration_id: o.id ?? null,
-            transfer_id: transferId ?? null,
-            crypto_tx_hash: transfer?.crypto_tx_hash || null,
-        });
-
-        // The transfer record decides the outcome; an orchestration can read
-        // COMPLETED while its withdrawal failed.
-        if (
-            transfer?.status === 'FAILED' ||
-            status === 'FAILED' ||
-            status === 'REJECTED'
-        ) {
-            const reason = reasonOf(transfer, o);
-
-            updateAction(ctx.db, action.ref_id, { status: 'failed', error: reason });
-            upsertLedger(ctx.db, { id: action.ref_id, status: 'failed', reason });
-        } else if (status === 'COMPLETED' && transfer?.status === 'COMPLETED') {
-            updateAction(ctx.db, action.ref_id, { status: 'completed', step: 'done' });
-        }
+        await evaluateMint(ctx, action, o);
 
         return;
     }
@@ -393,11 +493,7 @@ export async function onOrchestration(ctx: Ctx, o: Orchestration): Promise<void>
         return;
     }
 
-    upsertLedger(ctx.db, {
-        id: action.ref_id,
-        paxos_status: status,
-        orchestration_id: o.id ?? null,
-    });
+    upsertLedger(ctx.db, { id: action.ref_id, orchestration_id: o.id ?? null });
 
     if (status === 'COMPLETED') {
         updateAction(ctx.db, action.ref_id, {
@@ -406,15 +502,29 @@ export async function onOrchestration(ctx: Ctx, o: Orchestration): Promise<void>
             error: null,
         });
     } else if (status === 'FAILED' || status === 'REJECTED') {
-        const reason =
-            reasonOf(undefined, o) ?? 'The conversion to USD did not complete.';
-
-        updateAction(ctx.db, action.ref_id, { status: 'stuck', error: reason });
-        upsertLedger(ctx.db, { id: action.ref_id, status: 'stuck', reason });
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            reasonOf(undefined, o) ?? 'The conversion to USD did not complete.',
+        );
     }
 }
 
+// Inflows from the auto mint rule that setup created, delivered to this
+// treasury wallet. Other rules on the account are not this app's business.
 async function recordRuleInflow(ctx: Ctx, o: Orchestration) {
+    const ruleId = getKv(ctx.db, 'rule_id');
+    const destination = (o.destination as { crypto?: { address?: string } } | undefined)
+        ?.crypto?.address;
+
+    if (
+        o.orchestration_rule_id !== ruleId ||
+        (destination && destination.toLowerCase() !== ctx.chain.wallet.toLowerCase())
+    ) {
+        return;
+    }
+
     const transferId = o.destination_transfer?.transfer_id;
     const transfer = transferId ? await ctx.paxos.getTransfer(transferId) : undefined;
     const failed =
@@ -427,8 +537,8 @@ async function recordRuleInflow(ctx: Ctx, o: Orchestration) {
         ref_id: o.ref_id ?? null,
         source: 'rule',
         direction: 'in',
-        amount_units: toUnits(o.source_amount ?? '0').toString(),
-        paxos_status: o.status ?? null,
+        amount_units: fromPaxosAmount(o.source_amount ?? '0').toString(),
+        paxos_status: transfer?.status ?? o.status ?? null,
         orchestration_id: o.id ?? null,
         transfer_id: transferId ?? null,
         crypto_tx_hash: transfer?.crypto_tx_hash || null,
@@ -437,6 +547,12 @@ async function recordRuleInflow(ctx: Ctx, o: Orchestration) {
 }
 
 export async function onTransfer(ctx: Ctx, t: Transfer): Promise<void> {
+    if (t.type === 'CRYPTO_WITHDRAWAL') {
+        await onWithdrawal(ctx, t);
+
+        return;
+    }
+
     if (t.type !== 'CRYPTO_DEPOSIT' || !t.crypto_tx_hash) {
         return;
     }
@@ -459,10 +575,12 @@ export async function onTransfer(ctx: Ctx, t: Transfer): Promise<void> {
     });
 
     if (t.status === 'FAILED') {
-        const reason = reasonOf(t) ?? 'Paxos did not accept the deposit.';
-
-        updateAction(ctx.db, action.ref_id, { status: 'stuck', error: reason });
-        upsertLedger(ctx.db, { id: action.ref_id, status: 'stuck', reason });
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            reasonOf(t) ?? 'Paxos did not accept the deposit.',
+        );
 
         return;
     }
@@ -478,6 +596,21 @@ export async function onTransfer(ctx: Ctx, t: Transfer): Promise<void> {
     }
 }
 
+// A mint or rule withdrawal settled after its orchestration was seen:
+// evaluate the orchestration again with the settled transfer.
+async function onWithdrawal(ctx: Ctx, t: Transfer) {
+    const row = ctx.db
+        .prepare('SELECT orchestration_id FROM ledger WHERE transfer_id = ?')
+        .get(t.id ?? '') as { orchestration_id: string | null } | undefined;
+
+    if (row?.orchestration_id) {
+        await onOrchestration(
+            ctx,
+            await ctx.paxos.getOrchestration(row.orchestration_id),
+        );
+    }
+}
+
 // Paxos holds deposits from a new sending address until it knows who sent
 // them. The treasury wallet belongs to the business, so the answer is the
 // business itself.
@@ -485,11 +618,13 @@ async function answerTravelRule(ctx: Ctx, action: ActionRow, t: Transfer) {
     const identityId = ctx.config.paxos.identityId ?? t.identity_id;
 
     if (!identityId) {
-        updateAction(ctx.db, action.ref_id, {
-            status: 'stuck',
-            step: 'travel_rule',
-            error: 'Paxos needs the sender of this deposit. Set PAXOS_IDENTITY_ID.',
-        });
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            'Paxos needs the sender of this deposit. Set PAXOS_IDENTITY_ID.',
+        );
+        updateAction(ctx.db, action.ref_id, { step: 'travel_rule' });
 
         return;
     }
@@ -505,11 +640,13 @@ async function answerTravelRule(ctx: Ctx, action: ActionRow, t: Transfer) {
         });
     } catch (err) {
         if (!(err instanceof PaxosApiError && err.status === 409)) {
-            updateAction(ctx.db, action.ref_id, {
-                status: 'stuck',
-                step: 'travel_rule',
-                error: `Paxos did not accept the sender details: ${err instanceof Error ? err.message : String(err)}`,
-            });
+            fail(
+                ctx,
+                action.ref_id,
+                'stuck',
+                `Paxos did not accept the sender details: ${paxosReason(err)}`,
+            );
+            updateAction(ctx.db, action.ref_id, { step: 'travel_rule' });
 
             return;
         }
@@ -529,23 +666,23 @@ export async function retryStuck(ctx: Ctx, refId: string): Promise<ActionRow> {
         throw new Error(`No stuck action ${refId}`);
     }
 
-    if (action.step === 'travel_rule' || action.step === 'deposit') {
+    upsertLedger(ctx.db, { id: refId, status: 'pending', reason: null });
+
+    if (action.step === 'convert') {
+        updateAction(ctx.db, refId, { convert_attempt: action.convert_attempt + 1 });
+        await startConvert(ctx, getAction(ctx.db, refId)!);
+    } else {
         updateAction(ctx.db, refId, { status: 'processing', error: null });
 
         if (action.transfer_id) {
             await onTransfer(ctx, await ctx.paxos.getTransfer(action.transfer_id));
         }
-    } else {
-        updateAction(ctx.db, refId, { convert_attempt: action.convert_attempt + 1 });
-        await startConvert(ctx, getAction(ctx.db, refId)!);
     }
-
-    upsertLedger(ctx.db, { id: refId, status: 'pending', reason: null });
 
     return getAction(ctx.db, refId)!;
 }
 
-// Leaves the USDG in the Paxos account and stops tracking the redeem.
+// Leaves the USDG where it is and stops tracking the redeem.
 export function cancelStuck(ctx: Ctx, refId: string): ActionRow {
     const action = getAction(ctx.db, refId);
 
@@ -557,69 +694,126 @@ export function cancelStuck(ctx: Ctx, refId: string): ActionRow {
     upsertLedger(ctx.db, {
         id: refId,
         status: 'failed',
-        reason: 'Cancelled. The USDG stays in the Paxos account.',
+        reason:
+            action.step === 'deposit'
+                ? 'Cancelled. The USDG did not leave the wallet.'
+                : 'Cancelled. The USDG stays in the Paxos account.',
     });
 
     return getAction(ctx.db, refId)!;
 }
 
-// Brings every unfinished action up to date after a restart. Nothing is sent
-// twice: mints reuse their ref_id, and a redeem rebroadcasts its stored
-// signed transaction.
-export async function resumeInFlight(ctx: Ctx): Promise<void> {
+// The deposit leg of a redeem: rebroadcast the stored transaction if the
+// chain has not seen it, and notice a revert or a replaced nonce.
+async function checkDeposit(ctx: Ctx, action: ActionRow) {
+    const hash = action.deposit_tx_hash as Hex;
+    const receipt = await ctx.chain.publicClient
+        .getTransactionReceipt({ hash })
+        .catch(() => undefined);
+
+    if (receipt?.status === 'reverted') {
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            'The USDG transfer reverted on Arbitrum. Cancel it and redeem again.',
+        );
+
+        return;
+    }
+
+    if (receipt || !action.deposit_raw_tx) {
+        return;
+    }
+
+    const nonce = parseTransaction(action.deposit_raw_tx as Hex).nonce ?? 0;
+    const confirmed = await ctx.chain.publicClient.getTransactionCount({
+        address: ctx.chain.wallet,
+        blockTag: 'latest',
+    });
+
+    if (confirmed > nonce) {
+        fail(
+            ctx,
+            action.ref_id,
+            'stuck',
+            'Another transaction from the wallet replaced this USDG transfer. Cancel it and redeem again.',
+        );
+
+        return;
+    }
+
+    await ctx.chain.broadcast(action.deposit_raw_tx as Hex);
+}
+
+// Brings every unfinished action and rule inflow up to date from Paxos and the
+// chain. Runs on boot and on every loop pass, so a missed event or a restart
+// never leaves work hanging. Nothing is sent twice: mints reuse their ref_id,
+// and a redeem rebroadcasts its stored signed transaction.
+export async function refreshOpen(ctx: Ctx): Promise<void> {
     const open = ctx.db
-        .prepare("SELECT * FROM actions WHERE status IN ('processing', 'stuck')")
+        .prepare("SELECT * FROM actions WHERE status = 'processing'")
         .all() as ActionRow[];
 
     for (const action of open) {
-        if (action.kind === 'mint') {
-            const list = await ctx.paxos.listOrchestrations({
-                ref_id: [action.ref_id],
-            });
-            const o =
-                list.items?.[0] ??
-                (await createOrReuseOrchestration(
-                    ctx.paxos,
-                    mintBody(ctx, action.ref_id, BigInt(action.amount_units)),
-                ));
+        try {
+            if (action.kind === 'mint') {
+                const o = action.orchestration_id
+                    ? await ctx.paxos.getOrchestration(action.orchestration_id)
+                    : ((await ctx.paxos.listOrchestrations({ ref_id: [action.ref_id] }))
+                          .items?.[0] ??
+                      (await createOrReuseOrchestration(
+                          ctx.paxos,
+                          mintBody(ctx, action.ref_id, BigInt(action.amount_units)),
+                      )));
 
-            updateAction(ctx.db, action.ref_id, { orchestration_id: o.id ?? null });
-            await onOrchestration(ctx, o);
-            continue;
-        }
-
-        if (
-            action.step === 'deposit' &&
-            action.deposit_raw_tx &&
-            action.deposit_tx_hash
-        ) {
-            const receipt = await ctx.chain.publicClient
-                .getTransactionReceipt({ hash: action.deposit_tx_hash as Hex })
-                .catch(() => undefined);
-
-            if (!receipt) {
-                await ctx.chain.broadcast(action.deposit_raw_tx as Hex);
+                updateAction(ctx.db, action.ref_id, { orchestration_id: o.id ?? null });
+                await onOrchestration(ctx, o);
+                continue;
             }
-        }
 
-        if (action.transfer_id && action.step !== 'convert') {
-            await onTransfer(ctx, await ctx.paxos.getTransfer(action.transfer_id));
-        }
-
-        if (action.step === 'convert') {
-            const suffix =
-                action.convert_attempt === 0
-                    ? '-convert'
-                    : `-convert-${action.convert_attempt}`;
-            const list = await ctx.paxos.listOrchestrations({
-                ref_id: [`${action.ref_id}${suffix}`],
-            });
-
-            if (list.items?.[0]) {
-                await onOrchestration(ctx, list.items[0]);
-            } else if (action.status === 'processing') {
-                await startConvert(ctx, action);
+            if (action.step === 'deposit') {
+                await checkDeposit(ctx, action);
             }
+
+            if (action.transfer_id && action.step !== 'convert') {
+                await onTransfer(ctx, await ctx.paxos.getTransfer(action.transfer_id));
+            }
+
+            if (action.step === 'convert') {
+                const suffix =
+                    action.convert_attempt === 0
+                        ? '-convert'
+                        : `-convert-${action.convert_attempt}`;
+                const list = await ctx.paxos.listOrchestrations({
+                    ref_id: [`${action.ref_id}${suffix}`],
+                });
+
+                if (list.items?.[0]) {
+                    await onOrchestration(ctx, list.items[0]);
+                } else {
+                    await startConvert(ctx, action);
+                }
+            }
+        } catch (err) {
+            console.error(`refresh ${action.ref_id}`, err);
+        }
+    }
+
+    const rules = ctx.db
+        .prepare(
+            "SELECT orchestration_id FROM ledger WHERE source = 'rule' AND status = 'pending' AND (crypto_tx_hash IS NULL OR paxos_status != 'COMPLETED')",
+        )
+        .all() as { orchestration_id: string }[];
+
+    for (const row of rules) {
+        try {
+            await onOrchestration(
+                ctx,
+                await ctx.paxos.getOrchestration(row.orchestration_id),
+            );
+        } catch (err) {
+            console.error(`refresh rule inflow ${row.orchestration_id}`, err);
         }
     }
 }
@@ -652,7 +846,7 @@ export async function tick(ctx: Ctx): Promise<PolicyDecision> {
         .reduce((sum, a) => sum + BigInt(a.amount_units), 0n);
     const pendingRule = ctx.db
         .prepare(
-            "SELECT 1 FROM ledger WHERE source = 'rule' AND paxos_status IN ('PENDING', 'PROCESSING') LIMIT 1",
+            "SELECT 1 FROM ledger WHERE source = 'rule' AND status = 'pending' AND paxos_status IN ('PENDING', 'PROCESSING') LIMIT 1",
         )
         .get();
     const decision = decide({

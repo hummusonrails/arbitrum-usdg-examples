@@ -15,19 +15,33 @@ export async function GET(req: Request) {
     }
 
     const encoder = new TextEncoder();
-    let unsubscribe = () => {};
+    let stop = () => {};
     const stream = new ReadableStream({
         start(controller) {
-            unsubscribe = subscribe((s) => {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(s)}\n\n`));
-            });
+            const send = (text: string) => {
+                try {
+                    controller.enqueue(encoder.encode(text));
+                } catch {
+                    stop();
+                }
+            };
+            const unsubscribe = subscribe((s) =>
+                send(`data: ${JSON.stringify(s)}\n\n`),
+            );
+            // A comment line every 15 seconds keeps idle proxies from closing the stream.
+            const heartbeat = setInterval(() => send(': ping\n\n'), 15_000);
+
+            stop = () => {
+                clearInterval(heartbeat);
+                unsubscribe();
+            };
         },
         cancel() {
-            unsubscribe();
+            stop();
         },
     });
 
-    req.signal.addEventListener('abort', () => unsubscribe());
+    req.signal.addEventListener('abort', () => stop());
 
     return new Response(stream, {
         headers: {

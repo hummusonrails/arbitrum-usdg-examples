@@ -90,7 +90,9 @@ Paxos asks who sent a deposit from a new address. The treasury wallet belongs to
 ```ts
 await paxos.updateCryptoDeposit(deposit.id, {
     identity_id: identityId,
-    originator_address_info: { institution_info: { institution_name: institutionName } },
+    originator_address_info: {
+        institution_info: { institution_name: institutionName },
+    },
 });
 ```
 
@@ -142,19 +144,24 @@ To receive webhooks, add one in the Paxos Dashboard pointing at `https://<your h
 
 ## Configuration
 
-| Variable | Purpose |
-|:---------|:--------|
-| `MODE` | `sandbox` or `production` (mock mode is set by `pnpm dev:mock`) |
-| `PAXOS_CLIENT_ID`, `PAXOS_CLIENT_SECRET` | Paxos API credentials |
-| `PAXOS_PROFILE_ID` | The Paxos profile that holds USD and USDG |
-| `PAXOS_BANK_ACCOUNT_ID` | Bank account redeems pay out to |
-| `PAXOS_IDENTITY_ID`, `PAXOS_INSTITUTION_NAME` | Your organization, used to confirm deposits came from your own wallet |
-| `PAXOS_OPTIONAL_SCOPES` | `1` to request the deposit confirmation, ownership proof, and bank account scopes |
-| `TREASURY_PRIVATE_KEY` | The wallet that holds USDG on Arbitrum |
-| `RPC_URL` | Arbitrum RPC endpoint |
-| `WEBHOOK_API_KEY` | Shared value Paxos sends in the `x-api-key` header |
-| `POLICY_MIN`, `POLICY_TARGET`, `POLICY_MAX` | The treasury band in USDG |
-| `FORK_RPC_URL` | Upstream RPC for the mock mode fork (defaults to the public Arbitrum One RPC) |
+| Variable                                      | Purpose                                                                           |
+| :-------------------------------------------- | :-------------------------------------------------------------------------------- |
+| `MODE`                                        | `sandbox` or `production` (mock mode is set by `pnpm dev:mock`)                   |
+| `PAXOS_CLIENT_ID`, `PAXOS_CLIENT_SECRET`      | Paxos API credentials                                                             |
+| `PAXOS_PROFILE_ID`                            | The Paxos profile that holds USD and USDG                                         |
+| `PAXOS_BANK_ACCOUNT_ID`                       | Bank account redeems pay out to                                                   |
+| `PAXOS_IDENTITY_ID`, `PAXOS_INSTITUTION_NAME` | Your organization, used to confirm deposits came from your own wallet             |
+| `PAXOS_OPTIONAL_SCOPES`                       | `1` to request the deposit confirmation, ownership proof, and bank account scopes |
+| `TREASURY_PRIVATE_KEY`                        | The wallet that holds USDG on Arbitrum                                            |
+| `RPC_URL`                                     | Arbitrum RPC endpoint                                                             |
+| `WEBHOOK_API_KEY`                             | Shared value Paxos sends in the `x-api-key` header                                |
+| `POLICY_MIN`, `POLICY_TARGET`, `POLICY_MAX`   | The treasury band in USDG                                                         |
+| `FORK_RPC_URL`                                | Upstream RPC for the mock mode fork (defaults to the public Arbitrum One RPC)     |
+| `DEMO_WIRE_AMOUNT`                            | USD amount for **Simulate wire deposit** (at most two decimals)                   |
+| `LOOP_INTERVAL_MS`                            | How often the treasury loop runs (default 5000)                                   |
+| `EVENT_POLL_MS`                               | How often the app polls Paxos for events (default 15000)                          |
+| `DB_PATH`                                     | Where the app keeps its records (default `treasury.db`)                           |
+| `POLICY_START_PAUSED`                         | `1` to start with the policy paused, as mock mode does                            |
 
 ## Code map
 

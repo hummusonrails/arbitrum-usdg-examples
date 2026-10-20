@@ -2,6 +2,7 @@
 // prints the result of each check, and saves sanitized responses as fixtures
 // for the local mock server.
 import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,10 +25,11 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-const FIXTURES = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '../../mock-paxos/fixtures',
-);
+// Responses go to a temp folder unless --save-fixtures is passed, which
+// refreshes the fixtures the local mock serves.
+const FIXTURES = process.argv.includes('--save-fixtures')
+    ? join(dirname(fileURLToPath(import.meta.url)), '../../mock-paxos/fixtures')
+    : join(tmpdir(), 'treasury-probe');
 
 function env(name: string): string {
     const value = process.env[name];
@@ -452,5 +454,6 @@ await check('fetch each event type seen', async () => {
     note(`event types: ${[...seen].join(', ')}`);
 });
 
-console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');
+console.log(`\nResponses saved to ${FIXTURES}`);
+console.log(failures ? `${failures} check(s) failed` : 'All checks passed');
 process.exit(failures ? 1 : 0);

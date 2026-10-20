@@ -1,6 +1,6 @@
 // Matches each ledger row against the USDG Transfer log on Arbitrum: the
 // Paxos record and the chain must agree on recipient and amount.
-import { toUnits, usdgAbi, USDG } from '@arbitrum-usdg/usdg';
+import { fromPaxosAmount, usdgAbi, USDG } from '@arbitrum-usdg/usdg';
 import { parseEventLogs, type Address, type Hex } from 'viem';
 
 import type { Ctx } from './actions.ts';
@@ -49,7 +49,7 @@ export function reconcileRow(
 export async function reconcileAll(ctx: Ctx): Promise<void> {
     const rows = ctx.db
         .prepare(
-            "SELECT * FROM ledger WHERE status IN ('pending', 'mismatch') AND crypto_tx_hash IS NOT NULL",
+            "SELECT * FROM ledger WHERE status IN ('pending', 'mismatch') AND crypto_tx_hash IS NOT NULL AND transfer_id IS NOT NULL",
         )
         .all() as LedgerRow[];
     const depositAddress = getKv(ctx.db, 'deposit_address') as Address | undefined;
@@ -72,14 +72,17 @@ export async function reconcileAll(ctx: Ctx): Promise<void> {
 
         // The amount Paxos reports on its transfer record, falling back to the
         // amount the app asked for while that record is not available yet.
-        const reported = row.transfer_id
-            ? await ctx.paxos
-                  .getTransfer(row.transfer_id)
-                  .then((t) =>
-                      t.amount ? toUnits(t.amount) : BigInt(row.amount_units),
-                  )
-                  .catch(() => BigInt(row.amount_units))
-            : BigInt(row.amount_units);
+        // Matching needs both sides: the amount Paxos recorded on its transfer
+        // and the onchain log. Without the Paxos record the row stays pending.
+        const transfer = await ctx.paxos
+            .getTransfer(row.transfer_id!)
+            .catch(() => undefined);
+
+        if (!transfer?.amount) {
+            continue;
+        }
+
+        const reported = fromPaxosAmount(transfer.amount);
         const logs = parseEventLogs({
             abi: usdgAbi,
             logs: receipt.logs.filter((l) => l.address.toLowerCase() === token),

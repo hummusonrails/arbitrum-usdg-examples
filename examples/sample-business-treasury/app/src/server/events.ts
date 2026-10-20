@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import type { Orchestration, PaxosClient, Transfer } from '@arbitrum-usdg/paxos-client';
 
 import { getKv, setKv, type Db } from './db.ts';
@@ -8,6 +10,11 @@ export type EventHandlers = {
 };
 
 const CHECKPOINT = 'events_checkpoint';
+const LAST_POLL = 'events_last_poll';
+const POLL_EVERY_MS = 15_000;
+// An event that still cannot be fetched after this many tries is set aside,
+// so it never blocks the events behind it.
+const MAX_ATTEMPTS = 20;
 const LOOKBACK_MS = 5 * 60_000;
 const FIRST_RUN_LOOKBACK_MS = 24 * 60 * 60_000;
 
@@ -30,13 +37,20 @@ export function recordEvent(
     return result.changes > 0;
 }
 
+function sameKey(given: string, expected: string): boolean {
+    const a = Buffer.from(given);
+    const b = Buffer.from(expected);
+
+    return a.length === b.length && timingSafeEqual(a, b);
+}
+
 // Paxos webhooks are not signed, so the body is only a hint: the handler
 // records the event id and every detail is fetched back from the API.
 export async function handleWebhook(
     req: Request,
     deps: { db: Db; apiKey: string },
 ): Promise<Response> {
-    if (!deps.apiKey || req.headers.get('x-api-key') !== deps.apiKey) {
+    if (!deps.apiKey || !sameKey(req.headers.get('x-api-key') ?? '', deps.apiKey)) {
         return new Response('unauthorized', { status: 401 });
     }
 
@@ -71,6 +85,15 @@ export async function processPendingEvents(
     let done = 0;
 
     for (const row of pending) {
+        // Dashboard test pings are not real treasury events.
+        if (row.is_test) {
+            db.prepare('UPDATE events SET processed_at = ? WHERE id = ?').run(
+                new Date().toISOString(),
+                row.id,
+            );
+            continue;
+        }
+
         try {
             const event = await paxos.getEvent(row.id);
             const objectId = (event.object as { id?: string } | undefined)?.id;
@@ -87,8 +110,15 @@ export async function processPendingEvents(
             done += 1;
         } catch (err) {
             db.prepare(
-                'UPDATE events SET attempts = attempts + 1, last_error = ? WHERE id = ?',
-            ).run(err instanceof Error ? err.message : String(err), row.id);
+                `UPDATE events SET attempts = attempts + 1, last_error = ?,
+                  processed_at = CASE WHEN attempts + 1 >= ? THEN ? ELSE NULL END
+                 WHERE id = ?`,
+            ).run(
+                err instanceof Error ? err.message : String(err),
+                MAX_ATTEMPTS,
+                new Date().toISOString(),
+                row.id,
+            );
         }
     }
 
@@ -98,6 +128,15 @@ export async function processPendingEvents(
 // Catches up on events through List Events, so the app works without a
 // public webhook URL and recovers anything a webhook missed.
 export async function pollEvents(db: Db, paxos: PaxosClient): Promise<number> {
+    const lastPoll = Number(getKv(db, LAST_POLL) ?? '0');
+    const every = Number(process.env.EVENT_POLL_MS ?? POLL_EVERY_MS);
+
+    if (Date.now() - lastPoll < every) {
+        return 0;
+    }
+
+    setKv(db, LAST_POLL, String(Date.now()));
+
     const checkpoint = getKv(db, CHECKPOINT);
     const from = checkpoint
         ? new Date(Date.parse(checkpoint) - LOOKBACK_MS)

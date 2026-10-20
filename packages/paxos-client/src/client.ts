@@ -31,8 +31,10 @@ export const CORE_SCOPES = [
     'transfer:read_transfer',
     'transfer:write_crypto_destination_address',
     'transfer:write_deposit_address',
-    'transfer:write_sandbox_fiat_deposit',
 ];
+
+// Sandbox only: simulating a wire. Production credentials cannot hold it.
+export const SANDBOX_SCOPES = ['transfer:write_sandbox_fiat_deposit'];
 
 // Scopes for steps Paxos enables per organization: answering travel rule
 // requests on deposits, verifying wallet ownership, and adding bank accounts.
@@ -46,9 +48,15 @@ export const OPTIONAL_SCOPES = [
     'address:write_ownership_proofs',
 ];
 
-export function scopesFor(opts: { optional: boolean }): string[] {
-    return opts.optional ? [...CORE_SCOPES, ...OPTIONAL_SCOPES] : CORE_SCOPES;
+export function scopesFor(opts: { optional: boolean; sandbox?: boolean }): string[] {
+    return [
+        ...CORE_SCOPES,
+        ...(opts.sandbox === false ? [] : SANDBOX_SCOPES),
+        ...(opts.optional ? OPTIONAL_SCOPES : []),
+    ];
 }
+
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export const PAXOS_ENV = {
     sandbox: {
@@ -82,7 +90,13 @@ export type PaxosClientOptions = {
 };
 
 export function createPaxosClient(opts: PaxosClientOptions) {
-    const fetchImpl = opts.fetch ?? globalThis.fetch;
+    const base = opts.fetch ?? globalThis.fetch;
+    // Every call gets a timeout, so one hung request cannot stall the caller.
+    const fetchImpl: typeof globalThis.fetch = (input, init) =>
+        base(input, {
+            ...init,
+            signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
     const token = createTokenSource({ ...opts, fetch: fetchImpl });
     const api = createClient<paths>({
         baseUrl: opts.apiUrl,
