@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 
 import { DemoStrip } from '@/components/DemoStrip';
+import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 
@@ -25,10 +26,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <div className="stage-lights" aria-hidden />
                 <div className="flex min-h-dvh flex-col md:flex-row">
                     <Sidebar />
-                    <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-1 flex-col">
                         <DemoStrip />
                         <Header />
-                        <main className="px-4 py-6 md:px-8 md:py-8">{children}</main>
+                        <main className="px-4 py-6 md:px-8 md:py-8 flex-1">
+                            {children}
+                        </main>
+                        <Footer />
                     </div>
                 </div>
             </body>
