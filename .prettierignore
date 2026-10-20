@@ -1,0 +1,3 @@
+packages/paxos-client/src/schema.d.ts
+packages/paxos-client/openapi/
+pnpm-lock.yaml
