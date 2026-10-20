@@ -13,6 +13,7 @@
         "dev:mock": "tsx scripts/dev-mock.ts"
     },
     "dependencies": {
+        "@arbitrum-usdg/guide": "workspace:*",
         "@arbitrum-usdg/mock-paxos": "workspace:*",
         "@arbitrum-usdg/paxos-client": "workspace:*",
         "@arbitrum-usdg/usdg": "workspace:*",

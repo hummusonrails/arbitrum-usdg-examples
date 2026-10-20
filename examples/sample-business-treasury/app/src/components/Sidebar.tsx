@@ -2,6 +2,7 @@
 
 import {
     ArrowLeftRight,
+    Compass,
     LayoutGrid,
     ListChecks,
     SlidersHorizontal,
@@ -15,6 +16,11 @@ const NAV = [
     { href: '/activity', label: 'Activity', icon: ArrowLeftRight },
     { href: '/reconciliation', label: 'Reconciliation', icon: ListChecks },
     { href: '/settings', label: 'Settings', icon: SlidersHorizontal },
+    {
+        href: '/building-with-usdg',
+        label: 'Building with USDG on Arbitrum',
+        icon: Compass,
+    },
 ];
 
 export function Sidebar() {
@@ -45,14 +51,14 @@ export function Sidebar() {
                         <Link
                             key={href}
                             href={href}
-                            className={`flex items-center gap-3 rounded-[2px] px-3 py-2.5 text-sm whitespace-nowrap transition-colors ${
+                            className={`flex items-center gap-3 rounded-[2px] px-3 py-2.5 text-left text-sm whitespace-nowrap transition-colors md:whitespace-normal ${
                                 active
                                     ? 'bg-sky/30 font-semibold text-navy'
                                     : 'text-navy-2/80 hover:bg-sky/15'
                             }`}
                             aria-current={active ? 'page' : undefined}
                         >
-                            <Icon className="size-4" strokeWidth={1.75} />
+                            <Icon className="size-4 flex-none" strokeWidth={1.75} />
                             {label}
                         </Link>
                     );

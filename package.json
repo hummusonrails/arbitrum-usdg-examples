@@ -15,7 +15,8 @@
         "test": "pnpm -r --if-present test",
         "lint": "eslint .",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "guide:readme": "tsx scripts/guide-readme.ts"
     },
     "devDependencies": {
         "@types/node": "^22.0.0",

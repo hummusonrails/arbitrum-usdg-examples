@@ -34,6 +34,8 @@ Mock mode needs no accounts. It starts:
 
 The policy starts paused so you can try each action by hand. Hover any action to see what it does and which API calls it makes.
 
+The **Building with USDG on Arbitrum** page in the app's navigation walks through the ways businesses build with USDG and where to go next.
+
 ## How it works
 
 ```mermaid

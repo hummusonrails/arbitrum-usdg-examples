@@ -29,6 +29,9 @@ importers:
 
   examples/sample-business-treasury/app:
     dependencies:
+      '@arbitrum-usdg/guide':
+        specifier: workspace:*
+        version: link:../../../packages/usdg-guide
       '@arbitrum-usdg/mock-paxos':
         specifier: workspace:*
         version: link:../mock-paxos
@@ -115,6 +118,8 @@ importers:
       viem:
         specifier: ^2.38.0
         version: 2.57.7(typescript@5.9.3)
+
+  packages/usdg-guide: {}
 
 packages:
 
