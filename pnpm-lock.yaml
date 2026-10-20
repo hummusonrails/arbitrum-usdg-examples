@@ -27,6 +27,18 @@ importers:
         specifier: ^8.40.0
         version: 8.72.0(eslint@9.39.5)(typescript@5.9.3)
 
+  examples/sample-business-treasury/app:
+    dependencies:
+      '@arbitrum-usdg/paxos-client':
+        specifier: workspace:*
+        version: link:../../../packages/paxos-client
+      '@arbitrum-usdg/usdg':
+        specifier: workspace:*
+        version: link:../../../packages/usdg
+      viem:
+        specifier: ^2.38.0
+        version: 2.57.7(typescript@5.9.3)
+
   packages/paxos-client:
     dependencies:
       openapi-fetch:

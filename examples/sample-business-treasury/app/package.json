@@ -1,0 +1,14 @@
+{
+    "name": "sample-business-treasury",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "probe": "tsx --env-file-if-exists=.env scripts/probe.ts"
+    },
+    "dependencies": {
+        "@arbitrum-usdg/paxos-client": "workspace:*",
+        "@arbitrum-usdg/usdg": "workspace:*",
+        "viem": "^2.38.0"
+    }
+}
