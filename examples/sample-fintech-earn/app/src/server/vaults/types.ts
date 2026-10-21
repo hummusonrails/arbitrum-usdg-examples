@@ -53,8 +53,10 @@ export interface VaultAdapter {
         assets: bigint,
         instantLiquidity?: bigint | null,
     ): Promise<Preflight>;
-    deposit(assets: bigint): Promise<Submitted>;
-    withdraw(shares: bigint): Promise<Submitted>;
+    // `onSent` is called with the hash as soon as the main transaction is
+    // broadcast, before waiting for it, so the caller can record it first.
+    deposit(assets: bigint, onSent?: (txHash: Hex) => void): Promise<Submitted>;
+    withdraw(shares: bigint, onSent?: (txHash: Hex) => void): Promise<Submitted>;
     // Null while the action is still pending.
     settle(sub: Submitted): Promise<Settlement | null>;
     // Async vaults only: asks the protocol to cancel a pending request.

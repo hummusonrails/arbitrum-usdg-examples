@@ -1,6 +1,8 @@
 import {
     createPublicClient,
+    TransactionReceiptNotFoundError,
     type Abi,
+    type Hex,
     createWalletClient,
     http,
     type Address,
@@ -45,15 +47,21 @@ type Call = {
     value?: bigint;
 };
 
-// Simulates, sends, and waits for one contract call from the omnibus wallet.
-// Simulating first turns a revert into a readable error before any gas is spent.
-export async function submit(chain: Chain, call: Call) {
+// Simulates and broadcasts one contract call from the omnibus wallet, and
+// returns its hash. Simulating first turns a revert into a readable error
+// before any gas is spent.
+export async function send(chain: Chain, call: Call): Promise<Hex> {
     const { request } = await chain.publicClient.simulateContract({
         ...call,
         account: chain.walletClient.account!,
     } as Parameters<PublicClient['simulateContract']>[0]);
+
     // The call shape is checked where each caller builds it.
-    const hash = await chain.walletClient.writeContract(request as never);
+    return chain.walletClient.writeContract(request as never);
+}
+
+// Waits for a broadcast transaction and fails if it reverted.
+export async function confirm(chain: Chain, hash: Hex) {
     const receipt = await chain.publicClient.waitForTransactionReceipt({ hash });
 
     if (receipt.status !== 'success') {
@@ -61,4 +69,22 @@ export async function submit(chain: Chain, call: Call) {
     }
 
     return receipt;
+}
+
+// Sends and waits, for calls whose hash nobody needs to record first.
+export async function submit(chain: Chain, call: Call) {
+    return confirm(chain, await send(chain, call));
+}
+
+// A receipt, or null while the transaction has not been mined yet.
+export async function receiptOrNull(publicClient: PublicClient, hash: Hex) {
+    try {
+        return await publicClient.getTransactionReceipt({ hash });
+    } catch (err) {
+        if (err instanceof TransactionReceiptNotFoundError) {
+            return null;
+        }
+
+        throw err;
+    }
 }

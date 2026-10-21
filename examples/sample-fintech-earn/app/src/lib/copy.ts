@@ -14,21 +14,28 @@ export const COMMON_DISCLOSURE = [
     HOLDING_NOTE,
 ];
 
-export const VAULT_DISCLOSURE: Record<VaultId, string[]> = {
-    steakhouse: [
-        'Steakhouse Financial curates this Morpho vault and chooses which lending markets it supplies.',
-        'Morpho takes a 10% performance fee from the vault’s earnings.',
-    ],
-    gauntlet: [
-        'Gauntlet curates this Morpho vault and chooses which lending markets it supplies.',
-        'Morpho takes a 10% performance fee from the vault’s earnings.',
-    ],
-    glv: [
-        'This vault provides liquidity to GMX perpetual markets. Its value moves with traders’ profits and losses and can fall in USDG terms.',
-        'GMX charges a 0.04% fee when you withdraw.',
-        'Deposits and withdrawals settle a few seconds after you confirm, once GMX executes them.',
-    ],
-};
+// Lines specific to one vault. The Morpho fee is read live, because each
+// vault's owner sets it.
+export function vaultDisclosure(vault: {
+    id: VaultId;
+    curator: string;
+    performanceFee: number | null;
+}): string[] {
+    if (vault.id === 'glv') {
+        return [
+            'This vault provides liquidity to GMX perpetual markets. Its value moves with traders’ profits and losses and can fall in USDG terms.',
+            'GMX charges a 0.04% fee when you withdraw.',
+            'Deposits and withdrawals settle a few seconds after you confirm, once GMX executes them.',
+        ];
+    }
+
+    return [
+        `${vault.curator} curates this Morpho vault and chooses which lending markets it supplies.`,
+        vault.performanceFee == null
+            ? 'The vault’s owner may take a performance fee from its earnings.'
+            : `The vault takes a ${percent(vault.performanceFee, 0)} performance fee from its earnings, set by the vault’s owner.`,
+    ];
+}
 
 export function percent(value: number | null | undefined, digits = 2): string {
     return value == null ? 'Not available' : `${(value * 100).toFixed(digits)}%`;

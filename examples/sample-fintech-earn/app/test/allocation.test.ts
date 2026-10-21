@@ -138,3 +138,24 @@ test('no rewards and no campaign gives zeros without throwing', async () => {
         globalThis.fetch = realFetch;
     }
 });
+
+test('new rewards per vault never add up to more than was claimed', async () => {
+    const { splitClaim } = await import('../src/server/rewards.ts');
+    const zero3 = { steakhouse: 0n, gauntlet: 0n, glv: 0n };
+
+    // The books were reset, so the breakdown shows lifetime rewards but only 30 were just claimed.
+    const capped = splitClaim({ ...zero3, steakhouse: 60n, gauntlet: 40n }, zero3, 30n);
+
+    assert.equal(capped.fresh.steakhouse + capped.fresh.gauntlet, 30n);
+    assert.equal(capped.fresh.steakhouse, 18n);
+
+    // A vault's breakdown dropping never lowers what was already counted.
+    const dropped = splitClaim(
+        { ...zero3, steakhouse: 10n },
+        { ...zero3, steakhouse: 50n },
+        0n,
+    );
+
+    assert.equal(dropped.fresh.steakhouse, 0n);
+    assert.equal(dropped.counted.steakhouse, 50n);
+});

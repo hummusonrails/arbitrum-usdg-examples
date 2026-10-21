@@ -9,10 +9,18 @@ import {
     formatUnits,
     maxUint256,
     parseEventLogs,
+    type Hex,
 } from 'viem';
 
 import { vaultV2Abi } from '../abi.ts';
-import { ActionError, submit, type Chain } from '../chain.ts';
+import {
+    ActionError,
+    confirm,
+    receiptOrNull,
+    send,
+    submit,
+    type Chain,
+} from '../chain.ts';
 import type { VaultAdapter, VaultConfig } from './types.ts';
 
 const ONE_SHARE = 10n ** 18n;
@@ -74,9 +82,18 @@ export function createErc4626Adapter(config: VaultConfig, chain: Chain): VaultAd
         };
     }
 
-    async function run(call: Parameters<typeof submit>[1]) {
+    // Sends one call, reporting its hash as soon as it is broadcast, then
+    // waits for it. Vault reverts become readable sentences.
+    async function run(
+        call: Parameters<typeof submit>[1],
+        onSent?: (hash: Hex) => void,
+    ) {
         try {
-            return await submit(chain, call);
+            const hash = await send(chain, call);
+
+            onSent?.(hash);
+
+            return await confirm(chain, hash);
         } catch (err) {
             const message = vaultRevertMessage(err);
 
@@ -166,7 +183,7 @@ export function createErc4626Adapter(config: VaultConfig, chain: Chain): VaultAd
             return { ok: true };
         },
 
-        async deposit(assets) {
+        async deposit(assets, onSent) {
             const allowance = await publicClient.readContract({
                 address: USDG.arbitrumOne.address,
                 abi: erc20Abi,
@@ -184,29 +201,29 @@ export function createErc4626Adapter(config: VaultConfig, chain: Chain): VaultAd
                 });
             }
 
-            const receipt = await run({
-                ...vault,
-                functionName: 'deposit',
-                args: [assets, omnibus],
-            });
+            const receipt = await run(
+                { ...vault, functionName: 'deposit', args: [assets, omnibus] },
+                onSent,
+            );
 
             return { txHash: receipt.transactionHash, mode: 'sync', amount: assets };
         },
 
-        async withdraw(shares) {
-            const receipt = await run({
-                ...vault,
-                functionName: 'redeem',
-                args: [shares, omnibus, omnibus],
-            });
+        async withdraw(shares, onSent) {
+            const receipt = await run(
+                { ...vault, functionName: 'redeem', args: [shares, omnibus, omnibus] },
+                onSent,
+            );
 
             return { txHash: receipt.transactionHash, mode: 'sync', amount: shares };
         },
 
         async settle(sub) {
-            const receipt = await publicClient.getTransactionReceipt({
-                hash: sub.txHash,
-            });
+            const receipt = await receiptOrNull(publicClient, sub.txHash);
+
+            if (!receipt) {
+                return null;
+            }
 
             if (receipt.status !== 'success') {
                 return { status: 'cancelled', reason: 'The transaction reverted.' };

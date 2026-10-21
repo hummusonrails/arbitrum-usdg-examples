@@ -4,7 +4,7 @@ import { ArrowLeft, Loader2, Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 import { postAction } from '@/lib/api';
-import { COMMON_DISCLOSURE, HOLDING_NOTE, percent, VAULT_DISCLOSURE } from '@/lib/copy';
+import { COMMON_DISCLOSURE, HOLDING_NOTE, percent, vaultDisclosure } from '@/lib/copy';
 import { formatAmount, formatMoney } from '@/lib/format';
 import type { CustomerView, Snapshot, VaultView } from '@/lib/types';
 import type { VaultId } from '@/server/vaults/types';
@@ -483,7 +483,7 @@ function VaultScreen({
                     </h3>
                     <ul className="list-disc space-y-1.5 pl-4 text-[12px] leading-5 text-navy-2">
                         {[
-                            ...VAULT_DISCLOSURE[vault.id],
+                            ...vaultDisclosure(vault),
                             ...(accepted ? [] : COMMON_DISCLOSURE),
                         ].map((line) => (
                             <li key={line}>{line}</li>

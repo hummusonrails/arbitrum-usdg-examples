@@ -20,7 +20,14 @@ import {
 } from 'viem';
 
 import { dataStoreAbi, eventEmitterAbi, glvRouterAbi } from '../abi.ts';
-import { ActionError, submit, type Chain } from '../chain.ts';
+import {
+    ActionError,
+    confirm,
+    receiptOrNull,
+    send,
+    submit,
+    type Chain,
+} from '../chain.ts';
 import { GMX } from './registry.ts';
 import type { VaultAdapter, VaultConfig } from './types.ts';
 
@@ -220,8 +227,14 @@ export function createGlvAdapter(
         }
     }
 
-    async function request(token: Address, amount: bigint, create: Hex, fee: bigint) {
-        const receipt = await submit(chain, {
+    async function request(
+        token: Address,
+        amount: bigint,
+        create: Hex,
+        fee: bigint,
+        onSent?: (hash: Hex) => void,
+    ) {
+        const hash = await send(chain, {
             address: GMX.glvRouter,
             abi: glvRouterAbi,
             functionName: 'multicall',
@@ -242,6 +255,10 @@ export function createGlvAdapter(
             ],
             value: fee,
         });
+
+        onSent?.(hash);
+
+        const receipt = await confirm(chain, hash);
         const created = gmxEvents(receipt.logs).find((e) =>
             e.eventName.endsWith('Created'),
         );
@@ -337,7 +354,7 @@ export function createGlvAdapter(
             return { ok: true };
         },
 
-        async deposit(assets) {
+        async deposit(assets, onSent) {
             const [price, market, fee] = await Promise.all([
                 sharePrice(),
                 pickMarket('deposit'),
@@ -376,12 +393,13 @@ export function createGlvAdapter(
                     ],
                 }),
                 fee,
+                onSent,
             );
 
             return { ...sent, mode: 'async', amount: assets };
         },
 
-        async withdraw(shares) {
+        async withdraw(shares, onSent) {
             const [market, fee] = await Promise.all([
                 pickMarket('withdraw'),
                 executionFee('withdraw'),
@@ -419,6 +437,7 @@ export function createGlvAdapter(
                     ],
                 }),
                 fee,
+                onSent,
             );
 
             return { ...sent, mode: 'async', amount: shares };
@@ -446,17 +465,31 @@ export function createGlvAdapter(
         },
 
         async settle(sub) {
-            if (!sub.requestKey) {
-                throw new ActionError('A GMX request needs its request key to settle.');
+            const created = await receiptOrNull(publicClient, sub.txHash);
+
+            if (!created) {
+                return null;
             }
 
-            const created = await publicClient.getTransactionReceipt({
-                hash: sub.txHash,
-            });
+            if (created.status !== 'success') {
+                return { status: 'cancelled', reason: 'The transaction reverted.' };
+            }
+
+            // If the app stopped before it saw the creation receipt, the request
+            // key comes from that receipt now.
+            const requestKey =
+                sub.requestKey ??
+                gmxEvents(created.logs).find((e) => e.eventName.endsWith('Created'))
+                    ?.topic1;
+
+            if (!requestKey) {
+                throw new ActionError(`GMX did not record a request in ${sub.txHash}.`);
+            }
+
             const logs = await publicClient.getLogs({
                 address: GMX.eventEmitter,
                 event: eventEmitterAbi[2],
-                args: { topic1: sub.requestKey },
+                args: { topic1: requestKey },
                 fromBlock: created.blockNumber,
             });
             const done = gmxEvents(logs).find(

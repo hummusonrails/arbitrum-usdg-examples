@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { USDG, usdgAbi } from '@arbitrum-usdg/usdg';
-import { formatUnits } from 'viem';
+import { formatUnits, type Hex } from 'viem';
 
 import { ActionError } from './chain.ts';
 import type { Ctx } from './ctx.ts';
@@ -172,19 +172,32 @@ export function acceptDisclosure(ctx: Ctx, customerId: string, vaultId: VaultId)
 }
 
 // Sends the transaction, then settles it at once if the vault settles in the
-// same transaction. If sending fails, whatever was reserved goes back.
+// same transaction. The hash is recorded the moment the transaction is
+// broadcast; from then on the action is pending and only the chain decides
+// how it ends. Whatever was reserved goes back only if nothing was sent.
 async function send(
     ctx: Ctx,
     id: string,
-    vaultId: VaultId,
-    run: () => Promise<Submitted>,
+    run: (onSent: (hash: Hex) => void) => Promise<Submitted>,
     undo: () => void,
 ): Promise<string> {
+    let sent = false;
+    const onSent = (hash: Hex) => {
+        sent = true;
+        updateAction(ctx.db, id, { status: 'pending', tx_hash: hash });
+    };
     let sub: Submitted;
 
     try {
-        sub = await run();
+        sub = await run(onSent);
     } catch (err) {
+        if (sent) {
+            // The transaction is out; the loop settles it from its receipt.
+            console.error(`action ${id} sent but not confirmed yet`, err);
+
+            return id;
+        }
+
         tx(ctx.db, () => {
             undo();
             updateAction(ctx.db, id, {
@@ -249,8 +262,7 @@ export async function startDeposit(
     return send(
         ctx,
         id,
-        vaultId,
-        () => adapter.deposit(assets),
+        (onSent) => adapter.deposit(assets, onSent),
         () => addUsdg(ctx.db, customerId, assets),
     );
 }
@@ -276,6 +288,17 @@ export async function startWithdraw(
 
     if (inFlight) {
         throw new PreflightError('A withdrawal from this vault is already on its way.');
+    }
+
+    if (amount !== 'all') {
+        const held = await adapter.assetsForShares(owned);
+
+        if (amount > held) {
+            throw new PreflightError(
+                `You have ${usdg(held)} in ${VAULTS[vaultId].name}.`,
+                held,
+            );
+        }
     }
 
     const shares =
@@ -305,8 +328,7 @@ export async function startWithdraw(
     return send(
         ctx,
         id,
-        vaultId,
-        () => adapter.withdraw(shares),
+        (onSent) => adapter.withdraw(shares, onSent),
         () => {},
     );
 }
@@ -385,6 +407,8 @@ async function settleAction(ctx: Ctx, action: Action): Promise<void> {
 // Settles every action still waiting on the chain. Runs on every loop pass and
 // at startup, so a request that finished while the app was down is picked up.
 export async function settleOpen(ctx: Ctx): Promise<void> {
+    releaseUnsent(ctx);
+
     const open = (
         ctx.db
             .prepare(
@@ -397,6 +421,36 @@ export async function settleOpen(ctx: Ctx): Promise<void> {
         await settleAction(ctx, action).catch((err) =>
             console.error(`settle ${action.kind} ${action.id}`, err),
         );
+    }
+}
+
+// An action still marked submitted with no transaction after this long was
+// interrupted before it was sent (actions run one at a time and send within
+// seconds), so its reservation goes back to the customer.
+const UNSENT_AFTER_MS = 120_000;
+
+function releaseUnsent(ctx: Ctx): void {
+    const stale = (
+        ctx.db
+            .prepare(
+                `SELECT * FROM actions WHERE status = 'submitted' AND tx_hash IS NULL`,
+            )
+            .all() as ActionRow[]
+    )
+        .map(toAction)
+        .filter((a) => Date.now() - Date.parse(a.createdAt) > UNSENT_AFTER_MS);
+
+    for (const action of stale) {
+        tx(ctx.db, () => {
+            if (action.kind === 'deposit' && action.customerId) {
+                addUsdg(ctx.db, action.customerId, action.amountIn);
+            }
+
+            updateAction(ctx.db, action.id, {
+                status: 'failed',
+                reason: 'The app stopped before this was sent, so nothing moved.',
+            });
+        });
     }
 }
 

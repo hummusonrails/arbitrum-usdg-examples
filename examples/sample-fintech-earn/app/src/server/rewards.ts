@@ -93,6 +93,35 @@ export function allocate(input: {
     return { allocations, carry };
 }
 
+// How much of a claim is new reward per vault. Merkl's per vault breakdown is
+// cumulative, so new reward is the growth since what was already counted,
+// which never goes down. What is shared can never exceed what the claim just
+// paid, so if the books and the breakdown disagree (records reset, a crash
+// between claim and bookkeeping) each vault's part is scaled down to fit.
+export function splitClaim(
+    cumulative: ByVault,
+    counted: ByVault,
+    claimed: bigint,
+): { fresh: ByVault; counted: ByVault } {
+    const next = none();
+    const fresh = none();
+
+    for (const v of VAULT_IDS) {
+        next[v] = cumulative[v] > counted[v] ? cumulative[v] : counted[v];
+        fresh[v] = next[v] - counted[v];
+    }
+
+    const total = VAULT_IDS.reduce((s, v) => s + fresh[v], 0n);
+
+    if (total > claimed) {
+        for (const v of VAULT_IDS) {
+            fresh[v] = (fresh[v] * claimed) / total;
+        }
+    }
+
+    return { fresh, counted: next };
+}
+
 type MerklReward = {
     token: { address: string };
     amount: string;
@@ -249,13 +278,11 @@ export async function claimAndAllocate(
         args: [[ctx.chain.omnibus as Address], [ARB_TOKEN], [amount], [reward.proofs]],
     });
     const claimed = amount - before;
-    const cumulative = byVault(reward, 'amount');
-    const already = readByVault(ctx.db, 'rewards_claimed_by_vault');
-    const fresh = none();
-
-    for (const v of VAULT_IDS) {
-        fresh[v] = cumulative[v] > already[v] ? cumulative[v] - already[v] : 0n;
-    }
+    const { fresh, counted } = splitClaim(
+        byVault(reward, 'amount'),
+        readByVault(ctx.db, 'rewards_claimed_by_vault'),
+        claimed,
+    );
 
     const now = Date.now();
     const history = shareHistory(ctx.db);
@@ -286,7 +313,7 @@ export async function claimAndAllocate(
                 .run(id, a.customerId, a.vaultId, a.amount.toString());
         }
 
-        writeByVault(ctx.db, 'rewards_claimed_by_vault', cumulative);
+        writeByVault(ctx.db, 'rewards_claimed_by_vault', counted);
         writeByVault(ctx.db, 'rewards_carry', result.carry);
         setKv(ctx.db, 'rewards_last_allocation_at', String(now));
     });

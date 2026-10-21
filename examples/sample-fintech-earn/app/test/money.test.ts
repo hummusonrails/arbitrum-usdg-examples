@@ -151,3 +151,83 @@ test('pending async action settles after restart', async () => {
     assert.equal(getPosition(second.db, 'diego', 'glv').shares, SHARES(298));
     assert.equal(getPosition(second.db, 'diego', 'glv').netDeposited, USDG(300));
 });
+
+test('a deposit whose confirmation fails after broadcast stays pending and settles later', async () => {
+    const next = { settle: (): Settlement | null => null };
+    const vault: VaultAdapter = {
+        ...fakeVault('steakhouse', next),
+        deposit: async (amount, onSent) => {
+            onSent?.('0x0a');
+            throw new Error('receipt wait timed out');
+        },
+    };
+    const ctx = ctxFor(':memory:', { steakhouse: vault }, null);
+
+    ctx.db
+        .prepare('UPDATE customers SET usdg_units = ? WHERE id = ?')
+        .run(USDG(100).toString(), 'maya');
+    acceptDisclosure(ctx, 'maya', 'steakhouse');
+    await startDeposit(ctx, 'maya', 'steakhouse', USDG(100));
+
+    // The USDG left the wallet, so it must not come back to the customer.
+    assert.equal(getCustomer(ctx.db, 'maya').usdg, 0n);
+
+    next.settle = () => ({
+        status: 'executed',
+        shares: SHARES(100),
+        assets: USDG(100),
+    });
+    await settleOpen(ctx);
+
+    assert.equal(getPosition(ctx.db, 'maya', 'steakhouse').shares, SHARES(100));
+});
+
+test('a deposit interrupted before it was sent is released on the next pass', async () => {
+    const ctx = ctxFor(
+        ':memory:',
+        { steakhouse: fakeVault('steakhouse', { settle: () => null }) },
+        null,
+    );
+
+    ctx.db.prepare('UPDATE customers SET usdg_units = ? WHERE id = ?').run('0', 'maya');
+    ctx.db
+        .prepare(
+            `INSERT INTO actions (id, customer_id, vault_id, kind, amount_in, status, created_at, updated_at)
+             VALUES ('stale', 'maya', 'steakhouse', 'deposit', ?, 'submitted', ?, ?)`,
+        )
+        .run(
+            USDG(40).toString(),
+            '2020-01-01T00:00:00.000Z',
+            '2020-01-01T00:00:00.000Z',
+        );
+    await settleOpen(ctx);
+
+    assert.equal(getCustomer(ctx.db, 'maya').usdg, USDG(40));
+});
+
+test('asking to withdraw more than the customer holds is refused', async () => {
+    const executed = {
+        settle: (): Settlement => ({
+            status: 'executed',
+            shares: SHARES(100),
+            assets: USDG(100),
+        }),
+    };
+    const ctx = ctxFor(
+        ':memory:',
+        { steakhouse: fakeVault('steakhouse', executed) },
+        USDG(1_000),
+    );
+
+    ctx.db
+        .prepare('UPDATE customers SET usdg_units = ? WHERE id = ?')
+        .run(USDG(100).toString(), 'maya');
+    acceptDisclosure(ctx, 'maya', 'steakhouse');
+    await startDeposit(ctx, 'maya', 'steakhouse', USDG(100));
+
+    await assert.rejects(
+        startWithdraw(ctx, 'maya', 'steakhouse', USDG(150)),
+        (err: unknown) => err instanceof PreflightError && err.maxNow === USDG(100),
+    );
+    assert.equal(getPosition(ctx.db, 'maya', 'steakhouse').shares, SHARES(100));
+});
