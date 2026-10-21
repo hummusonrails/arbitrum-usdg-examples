@@ -10,7 +10,8 @@
         "dev": "next dev",
         "build": "EARN_LOOP=off next build",
         "start": "next start",
-        "dev:fork": "tsx scripts/dev-fork.ts"
+        "dev:fork": "tsx scripts/dev-fork.ts",
+        "markets": "tsx scripts/markets.ts"
     },
     "dependencies": {
         "@arbitrum-usdg/earn-fork-services": "workspace:*",
