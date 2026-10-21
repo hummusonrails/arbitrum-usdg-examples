@@ -3,3 +3,4 @@ packages:
     - 'examples/*/app'
     - 'examples/*/mock-paxos'
     - 'examples/*/e2e'
+    - 'examples/*/fork-services'
