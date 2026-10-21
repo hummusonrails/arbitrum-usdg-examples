@@ -397,6 +397,27 @@ export function createGlvAdapter(
             return { ...sent, mode: 'async', amount: shares };
         },
 
+        async cancel(sub) {
+            if (!sub.requestKey) {
+                throw new ActionError('A GMX request needs its request key to cancel.');
+            }
+
+            // Which kind of request this is shows in its creation event.
+            const created = await publicClient.getTransactionReceipt({
+                hash: sub.txHash,
+            });
+            const isDeposit = gmxEvents(created.logs).some(
+                (e) => e.eventName === 'GlvDepositCreated',
+            );
+
+            await submit(chain, {
+                address: GMX.glvRouter,
+                abi: glvRouterAbi,
+                functionName: isDeposit ? 'cancelGlvDeposit' : 'cancelGlvWithdrawal',
+                args: [sub.requestKey],
+            });
+        },
+
         async settle(sub) {
             if (!sub.requestKey) {
                 throw new ActionError('A GMX request needs its request key to settle.');

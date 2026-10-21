@@ -57,4 +57,6 @@ export interface VaultAdapter {
     withdraw(shares: bigint): Promise<Submitted>;
     // Null while the action is still pending.
     settle(sub: Submitted): Promise<Settlement | null>;
+    // Async vaults only: asks the protocol to cancel a pending request.
+    cancel?(sub: Submitted): Promise<void>;
 }
