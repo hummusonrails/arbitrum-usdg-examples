@@ -2,7 +2,8 @@
 // GMX keeper, the Merkl rewards stand in, and the app. Used by `pnpm dev:fork`
 // and by the end to end tests.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,7 +65,11 @@ export async function startStack(opts: StackOptions) {
         vaults: [VAULTS.steakhouse, VAULTS.gauntlet],
         fixedApr: opts.fixedApr,
     });
-    const dbPath = opts.dbPath ?? join(APP_DIR, 'earn.fork.db');
+    // Outside the app folder, so database writes never wake the dev server's
+    // file watcher.
+    const dbPath = opts.dbPath ?? join(tmpdir(), 'sample-fintech-earn', 'earn.fork.db');
+
+    mkdirSync(dirname(dbPath), { recursive: true });
 
     // The fork starts fresh every run, so the records do too.
     for (const suffix of ['', '-wal', '-shm']) {
