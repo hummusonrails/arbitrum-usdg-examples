@@ -325,6 +325,8 @@ export async function startMerklStandIn(opts: MerklStandInOptions) {
         publish,
         async close() {
             clearInterval(timer);
+            // Keep-alive connections from the app would hold close() open.
+            server.closeAllConnections();
             await new Promise((r) => server.close(r));
         },
     };

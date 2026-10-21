@@ -48,7 +48,9 @@ export async function startAnvil(opts: { port?: number; upstream?: string } = {}
     const rpcUrl = `http://127.0.0.1:${port}`;
     const child: ChildProcess = spawn(
         'anvil',
-        ['--fork-url', upstream, '--port', String(port), '--silent'],
+        // Without --no-rate-limit Anvil throttles its upstream calls, and a cold
+        // GMX execution touches enough state to stall for minutes.
+        ['--fork-url', upstream, '--port', String(port), '--no-rate-limit', '--silent'],
         { stdio: 'ignore', detached: true },
     );
     const client = forkClient(rpcUrl);

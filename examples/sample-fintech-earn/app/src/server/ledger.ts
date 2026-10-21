@@ -1,5 +1,6 @@
 // Acme Money's own books: each customer's app balance in USDG and, per vault,
 // the vault shares the omnibus wallet holds on their behalf.
+import { ActionError } from './chain.ts';
 import type { Db } from './db.ts';
 import type { VaultId } from './vaults/types.ts';
 
@@ -37,7 +38,7 @@ export function getCustomer(db: Db, id: string): Customer {
         .get(id) as { id: string; name: string; usdg_units: string } | undefined;
 
     if (!row) {
-        throw new Error(`Unknown customer ${id}`);
+        throw new ActionError(`Unknown customer ${id}.`);
     }
 
     const accepted = db

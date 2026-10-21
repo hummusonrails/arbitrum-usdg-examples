@@ -5,6 +5,8 @@
 import {
     createPublicClient,
     encodeAbiParameters,
+    encodeFunctionData,
+    zeroAddress,
     http,
     keccak256,
     parseAbi,
@@ -14,7 +16,7 @@ import {
 } from 'viem';
 import { arbitrum } from 'viem/chains';
 
-import { asAccount, forkClient, type ForkClient } from './anvil.ts';
+import { asAccount, forkClient, fundUsdg, type ForkClient } from './anvil.ts';
 
 const GMX = {
     dataStore: '0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8',
@@ -29,6 +31,8 @@ const GMX = {
 
 // An account holding GMX's ORDER_KEEPER role on Arbitrum One.
 const KEEPER: Address = '0xE47b36382DC50b90bCF6176Ddb159C4b9333A7AB';
+// About a minute of retries at the default poll interval.
+const MAX_TRIES = 60;
 const SIGNED_PRICES = 'https://arbitrum-api.gmxinfra.io/signed_prices/latest';
 
 const abi = parseAbi([
@@ -174,17 +178,14 @@ export async function startKeeper(opts: {
         withdrawal: keccak256(toHex('GlvWithdrawalCreated')),
     };
     let from = await client.getBlockNumber();
+    const queue = new Map<Hex, { kind: RequestKind; tries: number }>();
     let stopped = false;
     let timer: NodeJS.Timeout | undefined;
 
     const pass = async () => {
         const to = await client.getBlockNumber();
 
-        if (to < from) {
-            return;
-        }
-
-        for (const kind of ['deposit', 'withdrawal'] as const) {
+        for (const kind of to < from ? [] : (['deposit', 'withdrawal'] as const)) {
             const logs = await reader.request({
                 method: 'eth_getLogs',
                 params: [
@@ -198,23 +199,38 @@ export async function startKeeper(opts: {
             });
 
             for (const log of logs) {
-                const requestKey = log.topics[2] as Hex;
-
-                try {
-                    const hash = await executeRequest(client, kind, requestKey);
-
-                    if (opts.log) {
-                        console.log(
-                            `keeper executed GLV ${kind} ${requestKey} in ${hash}`,
-                        );
-                    }
-                } catch (err) {
-                    console.error(`keeper could not execute GLV ${kind}`, err);
-                }
+                queue.set(log.topics[2] as Hex, { kind, tries: 0 });
             }
         }
 
-        from = to + 1n;
+        from = to < from ? from : to + 1n;
+
+        // Signed prices must be at least as new as the request, so a request
+        // made a moment after the latest price waits for the next one, as a
+        // real keeper would. Requests that keep failing are dropped.
+        for (const [requestKey, item] of queue) {
+            try {
+                const hash = await executeRequest(client, item.kind, requestKey);
+
+                queue.delete(requestKey);
+
+                if (opts.log) {
+                    console.log(
+                        `keeper executed GLV ${item.kind} ${requestKey} in ${hash}`,
+                    );
+                }
+            } catch (err) {
+                item.tries += 1;
+
+                if (item.tries >= MAX_TRIES) {
+                    queue.delete(requestKey);
+                    console.error(
+                        `keeper gave up on GLV ${item.kind} ${requestKey}`,
+                        err,
+                    );
+                }
+            }
+        }
     };
 
     const loop = async () => {
@@ -233,4 +249,97 @@ export async function startKeeper(opts: {
             clearTimeout(timer);
         },
     };
+}
+
+const routerAbi = parseAbi([
+    'function approve(address spender, uint256 amount) returns (bool)',
+    'function multicall(bytes[] data) payable returns (bytes[] results)',
+    'function sendWnt(address receiver, uint256 amount) payable',
+    'function sendTokens(address token, address receiver, uint256 amount) payable',
+    'function createGlvDeposit(((address glv, address market, address receiver, address callbackContract, address uiFeeReceiver, address initialLongToken, address initialShortToken, address[] longTokenSwapPath, address[] shortTokenSwapPath) addresses, uint256 minGlvTokens, uint256 executionFee, uint256 callbackGasLimit, bool shouldUnwrapNativeToken, bool isMarketTokenDeposit, bytes32[] dataList) params) payable returns (bytes32)',
+]);
+
+// The first GLV execution on a fresh fork pulls a lot of GMX state from the
+// upstream RPC and can take a minute or more. Running one small deposit from a
+// throwaway account at startup makes the first customer deposit as quick as
+// the rest. The keeper executes it like any other request.
+export async function warmGlv(rpcUrl: string, usdgHolder: Address): Promise<void> {
+    const client = forkClient(rpcUrl);
+    const account: Address = '0x00000000000000000000000000000000000ea4e1';
+    const fee = 10n ** 16n;
+    const glvRouter: Address = '0x167540D2DFF14120365CfDDF2F86e3045D4fa712';
+    const router: Address = '0x7452c558d45f8afC8c83dAe62C3f8A5BE19c71f6';
+    const glvVault: Address = '0x393053B58f9678C9c28c2cE941fF6cac49C3F8f9';
+    const market: Address = '0xe57B97F2f83F39E74Ec83f3e039FD370884784fF';
+    const amount = 10_000_000n;
+
+    await fundUsdg(client, usdgHolder, account, amount);
+    await asAccount(client, account, async () => {
+        const send = async (to: Address, data: Hex, value = 0n) =>
+            client.waitForTransactionReceipt({
+                hash: await client.sendTransaction({
+                    account,
+                    chain: arbitrum,
+                    to,
+                    data,
+                    value,
+                }),
+            });
+
+        await send(
+            GMX.usdg,
+            encodeFunctionData({
+                abi: routerAbi,
+                functionName: 'approve',
+                args: [router, amount],
+            }),
+        );
+        await send(
+            glvRouter,
+            encodeFunctionData({
+                abi: routerAbi,
+                functionName: 'multicall',
+                args: [
+                    [
+                        encodeFunctionData({
+                            abi: routerAbi,
+                            functionName: 'sendWnt',
+                            args: [glvVault, fee],
+                        }),
+                        encodeFunctionData({
+                            abi: routerAbi,
+                            functionName: 'sendTokens',
+                            args: [GMX.usdg, glvVault, amount],
+                        }),
+                        encodeFunctionData({
+                            abi: routerAbi,
+                            functionName: 'createGlvDeposit',
+                            args: [
+                                {
+                                    addresses: {
+                                        glv: GMX.glv,
+                                        market,
+                                        receiver: account,
+                                        callbackContract: zeroAddress,
+                                        uiFeeReceiver: zeroAddress,
+                                        initialLongToken: GMX.usdg,
+                                        initialShortToken: GMX.usdg,
+                                        longTokenSwapPath: [],
+                                        shortTokenSwapPath: [],
+                                    },
+                                    minGlvTokens: 0n,
+                                    executionFee: fee,
+                                    callbackGasLimit: 0n,
+                                    shouldUnwrapNativeToken: false,
+                                    isMarketTokenDeposit: false,
+                                    dataList: [],
+                                },
+                            ],
+                        }),
+                    ],
+                ],
+            }),
+            fee,
+        );
+    });
 }

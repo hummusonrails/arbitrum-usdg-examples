@@ -206,6 +206,8 @@ export type RewardsState = {
     byCustomer: Record<string, bigint>;
     lastAllocationAt: string | null;
     simulated: boolean;
+    // Set when the rewards service could not be reached this pass.
+    unavailable?: boolean;
 };
 
 export async function readRewards(ctx: Ctx): Promise<RewardsState> {
