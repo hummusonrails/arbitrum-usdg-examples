@@ -1,0 +1,327 @@
+@import 'tailwindcss';
+
+@theme {
+    --color-navy: #213147;
+    --color-navy-2: #2d364d;
+    --color-blue: #12aaff;
+    --color-sky: #9dcced;
+    --color-error: #e5484d;
+    --font-sans: var(--font-inter), 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: var(--font-jetbrains), 'SF Mono', monospace;
+}
+
+:root {
+    /* Motion tokens: enter fast and settle, move with weight, exit in half the time. */
+    --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-move: cubic-bezier(0.76, 0, 0.24, 1);
+    --ease-exit: cubic-bezier(0.7, 0, 0.84, 0);
+    --edge: rgba(157, 204, 237, 0.7);
+    /* Lit material: a top highlight, a contact shadow, and a soft cast shadow. */
+    --shadow-tile:
+        0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 1px 2px rgba(33, 49, 71, 0.07),
+        0 12px 30px -16px rgba(33, 49, 71, 0.32);
+}
+
+html,
+body {
+    overflow-x: clip;
+    background: #eaf3fa;
+    color: var(--color-navy);
+}
+
+/* The lighting rig: a key light from the upper left, a cool top light, and a
+   blue rim along the right edge. The lights drift slowly; content never moves. */
+.stage-lights {
+    position: fixed;
+    inset: -10%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(
+            55% 45% at 22% 8%,
+            rgba(255, 255, 255, 0.95) 0%,
+            transparent 70%
+        ),
+        radial-gradient(
+            70% 40% at 55% -5%,
+            rgba(220, 236, 250, 0.9) 0%,
+            transparent 75%
+        ),
+        radial-gradient(
+            35% 70% at 104% 55%,
+            rgba(18, 170, 255, 0.16) 0%,
+            transparent 70%
+        ),
+        linear-gradient(180deg, #f3f8fc 0%, #e4eff8 100%);
+    animation: key-drift 13s ease-in-out infinite alternate;
+}
+
+@keyframes key-drift {
+    from {
+        transform: translate3d(-0.6%, -0.3%, 0);
+    }
+    to {
+        transform: translate3d(0.6%, 0.3%, 0);
+    }
+}
+
+@keyframes tip-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+@layer components {
+    .demo-strip {
+        background: linear-gradient(90deg, #213147 0%, #2d364d 100%);
+        color: #ffffff;
+    }
+
+    /* A physical tile: white material, top light, layered shadow, a faint sheen. */
+    .tile {
+        position: relative;
+        background: linear-gradient(180deg, #ffffff 0%, #f7fbfe 100%);
+        border: 1px solid var(--edge);
+        border-radius: 2px;
+        box-shadow: var(--shadow-tile);
+        overflow: hidden;
+    }
+
+    .tile::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+            115deg,
+            transparent 35%,
+            rgba(255, 255, 255, 0.55) 48%,
+            transparent 60%
+        );
+        opacity: 0.6;
+    }
+
+    /* The slate: the screen at the back of the set, lit from the rim. */
+    .slate {
+        position: relative;
+        background:
+            radial-gradient(
+                90% 120% at 0% 0%,
+                rgba(18, 170, 255, 0.18) 0%,
+                transparent 55%
+            ),
+            radial-gradient(
+                60% 80% at 100% 100%,
+                rgba(157, 204, 237, 0.1) 0%,
+                transparent 60%
+            ),
+            #213147;
+        border: 1px solid #2d364d;
+        border-radius: 2px;
+        color: #ffffff;
+        box-shadow:
+            1px 0 0 rgba(18, 170, 255, 0.35),
+            0 0 0 1px rgba(18, 170, 255, 0.08) inset,
+            0 24px 48px -24px rgba(33, 49, 71, 0.6);
+    }
+
+    /* The set lights up in order on load: lamps, then the slate, then the board. */
+    .power-on {
+        animation: power-on 520ms var(--ease-enter) both;
+        animation-delay: var(--power-delay, 0ms);
+    }
+
+    @keyframes power-on {
+        0% {
+            filter: brightness(0.35) saturate(0.6);
+            transform: scale(0.985);
+        }
+        18% {
+            filter: brightness(0.9);
+        }
+        30% {
+            filter: brightness(0.55);
+        }
+        100% {
+            filter: none;
+            transform: none;
+        }
+    }
+
+    .lamp {
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: #c9e2f3;
+        flex: none;
+    }
+
+    .lamp[data-on='true'] {
+        background: var(--color-blue);
+        box-shadow:
+            0 0 0 3px rgba(18, 170, 255, 0.15),
+            0 0 12px rgba(18, 170, 255, 0.75);
+        /* Clicks on with a three frame flicker. */
+        animation: lamp-on 100ms steps(3, jump-none) both;
+        animation-delay: var(--lamp-delay, 0ms);
+    }
+
+    .lamp[data-alert='true'] {
+        background: var(--color-error);
+        box-shadow:
+            0 0 0 3px rgba(229, 72, 77, 0.15),
+            0 0 10px rgba(229, 72, 77, 0.6);
+    }
+
+    @keyframes lamp-on {
+        0% {
+            opacity: 0.85;
+        }
+        50% {
+            opacity: 0.12;
+        }
+        100% {
+            opacity: 1;
+        }
+    }
+
+    /* Board cells: pending cells sit one step above the surface, a matched cell
+   is the brightest thing on the board. */
+    .board {
+        background: linear-gradient(180deg, #e9f2f9 0%, #e1edf7 100%);
+        border: 1px solid var(--edge);
+        border-radius: 2px;
+        box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.8) inset,
+            0 18px 36px -24px rgba(33, 49, 71, 0.35);
+    }
+
+    .cell {
+        background: #eef5fb;
+        border: 1px solid rgba(157, 204, 237, 0.55);
+        border-radius: 2px;
+    }
+
+    .cell[data-lit='true'] {
+        background: linear-gradient(180deg, #ffffff 0%, #f7fbfe 100%);
+        border-color: rgba(18, 170, 255, 0.55);
+        box-shadow:
+            0 1px 0 #fff inset,
+            0 0 0 1px rgba(18, 170, 255, 0.12),
+            0 8px 18px -10px rgba(18, 170, 255, 0.45);
+    }
+
+    .cell[data-alert='true'] {
+        border-color: rgba(229, 72, 77, 0.6);
+        background: #fff7f7;
+    }
+
+    /* The landed cell sends a ripple across its lane. */
+    .cell-ripple {
+        animation: ripple 700ms var(--ease-enter);
+    }
+
+    @keyframes ripple {
+        0% {
+            box-shadow: 0 0 0 0 rgba(18, 170, 255, 0.45);
+        }
+        100% {
+            box-shadow: 0 0 0 14px rgba(18, 170, 255, 0);
+        }
+    }
+
+    /* Feed lines type out at 24 characters a second, never longer than 1.4 s. */
+    .feed-line {
+        animation: type-in var(--type-ms, 600ms) steps(var(--type-steps, 30), end) both;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Console feed lines wrap and fade in, so long action lines stay readable. */
+    .feed-wrap {
+        animation: tip-in 420ms var(--ease-enter) both;
+        overflow-wrap: anywhere;
+    }
+
+    .feed-hold .feed-line {
+        animation-play-state: paused;
+    }
+
+    @keyframes type-in {
+        from {
+            max-width: 0;
+        }
+        to {
+            max-width: 100%;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+@layer components {
+    /* Depth. The overview is a small set: the slate stands upright at the back and
+   the reconciliation board lies in front of it like a desk, tipped back under a
+   long lens so text stays readable. */
+    .set-floor {
+        perspective: 1800px;
+        perspective-origin: 50% -20%;
+    }
+
+    .board-plane {
+        transform: rotateX(14deg);
+        transform-origin: 50% 0%;
+        transform-style: preserve-3d;
+    }
+
+    /* Every surface has thickness: a lit top face over a darker edge. */
+    .tile {
+        box-shadow:
+            0 2px 0 #d3e5f3,
+            var(--shadow-tile);
+    }
+
+    .board {
+        box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.8) inset,
+            0 10px 0 #c4dbec,
+            0 11px 0 #b3cfe4,
+            0 40px 50px -28px rgba(33, 49, 71, 0.45);
+    }
+
+    .cell {
+        box-shadow: 0 3px 0 #d6e7f4;
+        transition: transform 240ms var(--ease-enter);
+    }
+
+    .cell[data-lit='true'] {
+        box-shadow:
+            0 1px 0 #fff inset,
+            0 4px 0 #a9cfeb,
+            0 10px 20px -10px rgba(18, 170, 255, 0.5);
+        transform: translateY(-2px);
+    }
+
+    .slate {
+        box-shadow:
+            1px 0 0 rgba(18, 170, 255, 0.35),
+            0 0 0 1px rgba(18, 170, 255, 0.08) inset,
+            0 6px 0 #0b1330,
+            0 30px 50px -24px rgba(11, 19, 48, 0.65);
+    }
+
+    @media (max-width: 767px) {
+        .board-plane {
+            transform: none;
+        }
+    }
+}

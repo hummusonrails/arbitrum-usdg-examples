@@ -111,30 +111,34 @@ function value(shares: bigint, price: bigint) {
     return (shares * price) / ONE_SHARE;
 }
 
+// Vault shares with four decimals, for reading at a glance.
+function shortShares(value: string | null): string {
+    const [whole = '0', frac = ''] = (value ?? '0').split('.');
+
+    return `${whole}.${frac.padEnd(4, '0').slice(0, 4)}`;
+}
+
 // One line per onchain action, newest first, for the console's slate.
-function feedFrom(actions: ActionView[]): FeedLine[] {
+function feedFrom(actions: ActionView[], names: Record<string, string>): FeedLine[] {
     return actions
         .filter((a) => a.vaultId && a.txHash)
         .map((a) => {
             const vault = VAULTS[a.vaultId!].name;
-            const who = a.customerId ?? 'omnibus';
-            const verb = a.kind === 'deposit' ? 'deposit into' : 'withdraw from';
-            const amount =
-                a.kind === 'deposit' ? `${a.amount} USDG` : `${a.amount} shares`;
-            const result =
-                a.status === 'executed'
-                    ? a.kind === 'deposit'
-                        ? `minted ${a.shares} shares`
-                        : `paid ${a.assets} USDG`
-                    : a.status === 'pending'
-                      ? 'waiting for the GMX keeper'
-                      : (a.reason ?? a.status);
+            const who = names[a.customerId ?? ''] ?? 'Operator';
+            let text: string;
 
-            return {
-                at: a.createdAt,
-                text: `${who} ${verb} ${vault}: ${amount}, ${result}`,
-                txHash: a.txHash ?? undefined,
-            };
+            if (a.status === 'executed') {
+                text =
+                    a.kind === 'deposit'
+                        ? `${who} put ${a.assets} USDG into ${vault} for ${shortShares(a.shares)} shares`
+                        : `${who} took ${a.assets} USDG out of ${vault} for ${shortShares(a.shares)} shares`;
+            } else if (a.status === 'pending') {
+                text = `${who} ${a.kind === 'deposit' ? `sent ${a.amount} USDG to` : `asked to withdraw from`} ${vault}, waiting for the GMX keeper`;
+            } else {
+                text = `${who} ${a.kind} in ${vault}: ${a.reason ?? a.status}`;
+            }
+
+            return { at: a.createdAt, text, txHash: a.txHash ?? undefined };
         });
 }
 
@@ -313,7 +317,10 @@ export async function getSnapshot(ctx: Ctx, error?: string): Promise<Snapshot> {
             lastAllocationAt: rewards.lastAllocationAt,
             simulated: rewards.simulated,
         },
-        feed: feedFrom(actions),
+        feed: feedFrom(
+            actions,
+            Object.fromEntries(customers.map((c) => [c.id, c.name.split(' ')[0]!])),
+        ),
         error,
         updatedAt: new Date().toISOString(),
     };

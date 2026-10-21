@@ -72,16 +72,43 @@ export function createGlvAdapter(
     const { publicClient, omnibus } = chain;
     const glv = config.address;
 
-    async function getJson<T>(path: string): Promise<T> {
-        const res = await fetch(`${gmxApiUrl}${path}`, {
-            headers: { 'user-agent': 'acme-money-sample' },
-        });
+    // GMX API reads are cached briefly, and the last good answer is used when
+    // the API is slow or unreachable, so one network hiccup does not blank the
+    // page. Actions still fail if there has never been a good answer.
+    const cache = new Map<string, { at: number; value: unknown }>();
 
-        if (!res.ok) {
-            throw new ActionError(`GMX API ${path} returned ${res.status}.`);
+    async function getJson<T>(path: string): Promise<T> {
+        const hit = cache.get(path);
+
+        if (hit && Date.now() - hit.at < 15_000) {
+            return hit.value as T;
         }
 
-        return res.json() as Promise<T>;
+        try {
+            const res = await fetch(`${gmxApiUrl}${path}`, {
+                headers: { 'user-agent': 'acme-money-sample' },
+                signal: AbortSignal.timeout(10_000),
+            });
+
+            if (!res.ok) {
+                throw new Error(`GMX API ${path} returned ${res.status}`);
+            }
+
+            const value = (await res.json()) as T;
+
+            cache.set(path, { at: Date.now(), value });
+
+            return value;
+        } catch (err) {
+            if (hit) {
+                return hit.value as T;
+            }
+
+            console.error('GMX API', err);
+            throw new ActionError(
+                'The GMX API is not reachable right now. Try again shortly.',
+            );
+        }
     }
 
     // USDG base units for 1e18 GLV, from GMX's price feed. GMX prices carry

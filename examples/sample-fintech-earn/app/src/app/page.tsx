@@ -1,3 +1,5 @@
+import { EarnStudio } from '@/components/EarnStudio';
+
 export default function Page() {
-    return <main>Acme Money</main>;
+    return <EarnStudio />;
 }
