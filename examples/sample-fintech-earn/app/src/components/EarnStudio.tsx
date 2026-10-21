@@ -1,20 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { TOUR } from '@/lib/guides';
 
 import { Console } from './console/Console';
 import { Phone } from './customer/Phone';
 import { FlightLayer } from './Flight';
+import { ShowTips, TourProvider, useTour } from './Tour';
 
 // The customer's phone and the operator console side by side, so every tap on
 // the phone shows its effect on Acme Money's books and on the chain. Narrow
 // screens switch between the two.
 export function EarnStudio() {
+    return (
+        <TourProvider>
+            <Studio />
+        </TourProvider>
+    );
+}
+
+function Studio() {
     const [view, setView] = useState<'customer' | 'console'>('customer');
+    const tour = useTour();
+    const side = tour.step === null ? undefined : TOUR[tour.step]?.side;
+
+    // On narrow screens the tour switches to the half its step points at.
+    useEffect(() => {
+        if (side) {
+            setView(side);
+        }
+    }, [side]);
 
     return (
         <>
-            <div className="mb-4 flex gap-1 xl:hidden" role="tablist">
+            <div className="mb-3 hidden justify-end xl:flex">
+                <ShowTips />
+            </div>
+            <div className="mb-4 flex items-center gap-1 xl:hidden" role="tablist">
                 {(
                     [
                         ['customer', 'Customer app'],
@@ -36,6 +59,9 @@ export function EarnStudio() {
                         {label}
                     </button>
                 ))}
+                <span className="ml-2">
+                    <ShowTips />
+                </span>
             </div>
             <div className="grid gap-8 xl:grid-cols-[400px_minmax(0,1fr)] xl:items-start">
                 <div

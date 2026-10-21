@@ -11,6 +11,7 @@ import type { VaultId } from '@/server/vaults/types';
 
 import { BigNumber } from '../BigNumber';
 import { AcmeMark } from '../Sidebar';
+import { TourTip } from '../Tour';
 import { useSnapshot } from '../useSnapshot';
 import { ProtocolMark, RateLines, totalRate, VaultCard } from './VaultCard';
 
@@ -181,31 +182,40 @@ function Home({
 
     return (
         <div className="space-y-4">
-            <section className="slate p-5">
-                <p className="mb-1 text-[12px] text-sky">Your USDG</p>
-                <BigNumber value={customer.usdg} unit="USDG" compact />
-                <div className="mt-4 grid grid-cols-2 gap-3 text-white">
-                    <div>
-                        <p className="text-[11.5px] text-white/70">Earn balance</p>
-                        <p className="font-mono text-[17px]">
-                            {formatMoney(customer.earnBalance)}
+            <TourTip step="balance" block>
+                {(aria) => (
+                    <section className="slate p-5" {...aria}>
+                        <p className="mb-1 text-[12px] text-sky">Your USDG</p>
+                        <BigNumber value={customer.usdg} unit="USDG" compact />
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-white">
+                            <div>
+                                <p className="text-[11.5px] text-white/70">
+                                    Earn balance
+                                </p>
+                                <p className="font-mono text-[17px]">
+                                    {formatMoney(customer.earnBalance)}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[11.5px] text-white/70">
+                                    Earnings to date
+                                </p>
+                                <p className="font-mono text-[17px]">
+                                    {formatMoney(customer.earnings)}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="mt-3 text-[11.5px] text-white/70">
+                            ARB rewards{' '}
+                            <span className="font-mono text-white">
+                                {Number(customer.arbRewards).toFixed(4)}
+                            </span>
+                            {s.rewards.simulated &&
+                                ' · simulated rewards on a local fork'}
                         </p>
-                    </div>
-                    <div>
-                        <p className="text-[11.5px] text-white/70">Earnings to date</p>
-                        <p className="font-mono text-[17px]">
-                            {formatMoney(customer.earnings)}
-                        </p>
-                    </div>
-                </div>
-                <p className="mt-3 text-[11.5px] text-white/70">
-                    ARB rewards{' '}
-                    <span className="font-mono text-white">
-                        {Number(customer.arbRewards).toFixed(4)}
-                    </span>
-                    {s.rewards.simulated && ' · simulated rewards on a local fork'}
-                </p>
-            </section>
+                    </section>
+                )}
+            </TourTip>
 
             <Pending s={s} customerId={customer.id} />
 
@@ -228,13 +238,18 @@ function Home({
                 )}
             {error && <p className="text-[12.5px] text-error">{error}</p>}
 
-            <button
-                type="button"
-                onClick={() => go({ name: 'vaults' })}
-                className="w-full rounded-[2px] bg-blue px-4 py-3 text-sm font-semibold text-white"
-            >
-                Start earning
-            </button>
+            <TourTip step="vaults" block>
+                {(aria) => (
+                    <button
+                        type="button"
+                        onClick={() => go({ name: 'vaults' })}
+                        className="w-full rounded-[2px] bg-blue px-4 py-3 text-sm font-semibold text-white"
+                        {...aria}
+                    >
+                        Start earning
+                    </button>
+                )}
+            </TourTip>
 
             <section className="space-y-2">
                 <h2 className="text-[13px] font-semibold">Your earn positions</h2>
