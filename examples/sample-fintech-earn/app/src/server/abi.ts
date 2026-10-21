@@ -62,44 +62,50 @@ export const glvHandlerAbi = parseAbi([
 
 // GMX reports request lifecycles through one generic event whose payload is a
 // set of typed key/value lists.
-export const eventEmitterAbi = [
-    eventLog('EventLog', 0),
-    eventLog('EventLog1', 1),
-    eventLog('EventLog2', 2),
+const eventData = {
+    name: 'eventData',
+    type: 'tuple',
+    indexed: false,
+    components: [
+        kv('addressItems', 'address'),
+        kv('uintItems', 'uint256'),
+        kv('intItems', 'int256'),
+        kv('boolItems', 'bool'),
+        kv('bytes32Items', 'bytes32'),
+        kv('bytesItems', 'bytes'),
+        kv('stringItems', 'string'),
+    ],
+} as const;
+const head = [
+    { name: 'msgSender', type: 'address', indexed: false },
+    { name: 'eventName', type: 'string', indexed: false },
+    { name: 'eventNameHash', type: 'string', indexed: true },
 ] as const;
 
-function eventLog<N extends string>(name: N, topics: 0 | 1 | 2) {
-    const indexed = [
-        { name: 'topic1', type: 'bytes32', indexed: true },
-        { name: 'topic2', type: 'bytes32', indexed: true },
-    ] as const;
-
-    return {
+export const eventEmitterAbi = [
+    { type: 'event', name: 'EventLog', anonymous: false, inputs: [...head, eventData] },
+    {
         type: 'event',
-        name,
+        name: 'EventLog1',
         anonymous: false,
         inputs: [
-            { name: 'msgSender', type: 'address', indexed: false },
-            { name: 'eventName', type: 'string', indexed: false },
-            { name: 'eventNameHash', type: 'string', indexed: true },
-            ...indexed.slice(0, topics),
-            {
-                name: 'eventData',
-                type: 'tuple',
-                indexed: false,
-                components: [
-                    kv('addressItems', 'address'),
-                    kv('uintItems', 'uint256'),
-                    kv('intItems', 'int256'),
-                    kv('boolItems', 'bool'),
-                    kv('bytes32Items', 'bytes32'),
-                    kv('bytesItems', 'bytes'),
-                    kv('stringItems', 'string'),
-                ],
-            },
+            ...head,
+            { name: 'topic1', type: 'bytes32', indexed: true },
+            eventData,
         ],
-    } as const;
-}
+    },
+    {
+        type: 'event',
+        name: 'EventLog2',
+        anonymous: false,
+        inputs: [
+            ...head,
+            { name: 'topic1', type: 'bytes32', indexed: true },
+            { name: 'topic2', type: 'bytes32', indexed: true },
+            eventData,
+        ],
+    },
+] as const;
 
 function kv<N extends string, T extends string>(name: N, type: T) {
     return {

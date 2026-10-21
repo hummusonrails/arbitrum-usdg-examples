@@ -28,7 +28,13 @@ export type VaultChainState = {
 
 export type Preflight = { ok: true } | { ok: false; reason: string; maxNow?: bigint };
 
-export type Submitted = { txHash: Hex; mode: 'sync' | 'async'; requestKey?: Hex };
+// `amount` is what was sent in: USDG for a deposit, shares for a withdrawal.
+export type Submitted = {
+    txHash: Hex;
+    mode: 'sync' | 'async';
+    amount: bigint;
+    requestKey?: Hex;
+};
 
 export type Settlement =
     | { status: 'executed'; shares: bigint; assets: bigint }

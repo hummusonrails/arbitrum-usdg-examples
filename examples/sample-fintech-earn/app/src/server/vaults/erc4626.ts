@@ -190,7 +190,7 @@ export function createErc4626Adapter(config: VaultConfig, chain: Chain): VaultAd
                 args: [assets, omnibus],
             });
 
-            return { txHash: receipt.transactionHash, mode: 'sync' };
+            return { txHash: receipt.transactionHash, mode: 'sync', amount: assets };
         },
 
         async withdraw(shares) {
@@ -200,7 +200,7 @@ export function createErc4626Adapter(config: VaultConfig, chain: Chain): VaultAd
                 args: [shares, omnibus, omnibus],
             });
 
-            return { txHash: receipt.transactionHash, mode: 'sync' };
+            return { txHash: receipt.transactionHash, mode: 'sync', amount: shares };
         },
 
         async settle(sub) {

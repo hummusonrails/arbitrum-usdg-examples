@@ -39,13 +39,10 @@ const abi = parseAbi([
     'function executeGlvWithdrawal(bytes32 key, (address[] tokens, address[] providers, bytes[] data) oracleParams)',
 ]);
 
-// topic0 of GMX's EventLog2. The event name hash is topic1 and the request
-// key is topic2.
-const EVENT_LOG2: Hex = keccak256(
-    toHex(
-        'EventLog2(address,string,string,bytes32,bytes32,((((string,address)[],(string,address[])[]),((string,uint256)[],(string,uint256[])[]),((string,int256)[],(string,int256[])[]),((string,bool)[],(string,bool[])[]),((string,bytes32)[],(string,bytes32[])[]),((string,bytes)[],(string,bytes[])[]),((string,string)[],(string,string[])[])))',
-    ),
-);
+// topic0 of GMX's EventLog2 (the selector of its full ABI signature). The
+// event name hash is topic1 and the request key is topic2.
+const EVENT_LOG2: Hex =
+    '0x468a25a7ba624ceea6e540ad6f49171b52495b648417ae91bca21676d8a24dc5';
 
 // GMX DataStore keys are keccak256(abi.encode(...)).
 function key(...parts: [string, ...(Address | Hex)[]]): Hex {

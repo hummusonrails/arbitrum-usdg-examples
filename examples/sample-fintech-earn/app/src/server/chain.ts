@@ -1,5 +1,6 @@
 import {
     createPublicClient,
+    type Abi,
     createWalletClient,
     http,
     type Address,
@@ -36,7 +37,13 @@ export function createChain(config: Config): Chain {
 // A message the app wrote itself, safe to show a customer or operator.
 export class ActionError extends Error {}
 
-type Call = Parameters<PublicClient['simulateContract']>[0];
+type Call = {
+    address: Address;
+    abi: Abi;
+    functionName: string;
+    args?: readonly unknown[];
+    value?: bigint;
+};
 
 // Simulates, sends, and waits for one contract call from the omnibus wallet.
 // Simulating first turns a revert into a readable error before any gas is spent.
@@ -44,8 +51,9 @@ export async function submit(chain: Chain, call: Call) {
     const { request } = await chain.publicClient.simulateContract({
         ...call,
         account: chain.walletClient.account!,
-    });
-    const hash = await chain.walletClient.writeContract(request);
+    } as Parameters<PublicClient['simulateContract']>[0]);
+    // The call shape is checked where each caller builds it.
+    const hash = await chain.walletClient.writeContract(request as never);
     const receipt = await chain.publicClient.waitForTransactionReceipt({ hash });
 
     if (receipt.status !== 'success') {
