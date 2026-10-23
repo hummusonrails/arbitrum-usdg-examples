@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 
 import { acmePoolAbi } from '@arbitrum-usdg/spot-dex-contracts';
 import { USDG, USDG_ETHEREUM, usdgRewardsAbi } from '@arbitrum-usdg/usdg';
-import { erc20Abi, parseUnits, type Address } from 'viem';
+import { erc20Abi, formatUnits, parseUnits, type Address } from 'viem';
 
 import { startStack, type Stack } from '../../app/scripts/stack.ts';
 import { WETH } from '../../app/src/server/registry.ts';
@@ -121,6 +121,7 @@ test('swaps USDG for WETH', async () => {
         poolId: 'weth',
         side: 'buy',
         amount: '1000',
+        minOut: formatUnits(quoted, 18),
     });
 
     assert.equal(usdgBefore - (await balance(stack.arbitrum, usdg, priya)), amount);
@@ -135,10 +136,28 @@ test('refuses a swap larger than the balance', async () => {
         poolId: 'weth',
         side: 'buy',
         amount: '9999999',
+        minOut: '0',
     });
 
     assert.equal(res.status, 409);
     assert.match(res.body.message!, /wallet holds/);
+    assert.equal(await balance(stack.arbitrum, usdg, stack.wallets.priya), before);
+});
+
+test('refuses a swap that would miss its minimum', async () => {
+    const before = await balance(stack.arbitrum, usdg, stack.wallets.priya);
+    const res = await api({
+        action: 'swap',
+        who: 'priya',
+        poolId: 'weth',
+        side: 'buy',
+        amount: '100',
+        // More WETH than 100 USDG can buy, as if the price moved after the quote.
+        minOut: '10',
+    });
+
+    assert.equal(res.status, 409);
+    assert.match(res.body.message!, /price moved past your minimum/);
     assert.equal(await balance(stack.arbitrum, usdg, stack.wallets.priya), before);
 });
 

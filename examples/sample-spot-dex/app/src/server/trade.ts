@@ -159,6 +159,8 @@ export async function swap(
     id: PoolId,
     side: Side,
     amountIn: bigint,
+    // The minimum the trader saw with their quote. The pool reverts below it.
+    minAmountOut: bigint,
 ) {
     const pool = ctx.config.pools[id];
     const quote = await quoteSwap(ctx, id, side, amountIn);
@@ -183,7 +185,7 @@ export async function swap(
         address: pool,
         abi: acmePoolAbi,
         functionName: 'swapExactIn',
-        args: [tokenIn.address, amountIn, quote.minOut, ctx.chains.address(who)],
+        args: [tokenIn.address, amountIn, minAmountOut, ctx.chains.address(who)],
     });
 
     record(ctx.db, {

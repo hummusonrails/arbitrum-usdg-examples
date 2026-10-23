@@ -51,7 +51,14 @@ export function SwapScreen({ s, wallet }: { s: Snapshot; wallet: WalletSnapshot 
         if (
             await run(
                 'swap',
-                { action: 'swap', who: wallet.id, poolId, side, amount },
+                {
+                    action: 'swap',
+                    who: wallet.id,
+                    poolId,
+                    side,
+                    amount,
+                    minOut: q?.min,
+                },
                 `Swapped ${amount} ${inSymbol}.`,
             )
         ) {

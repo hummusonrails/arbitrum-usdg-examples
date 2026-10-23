@@ -61,6 +61,17 @@ function amount(value: unknown, decimals: number, symbol: string): bigint {
     return parseUnits(value, decimals);
 }
 
+// The least the trader accepts from a swap. Zero is allowed.
+function minimum(value: unknown, decimals: number): bigint {
+    const pattern = new RegExp(`^\\d+(\\.\\d{1,${decimals}})?$`);
+
+    if (typeof value !== 'string' || !pattern.test(value)) {
+        throw new BadRequest('Send the minimum amount out with the swap.');
+    }
+
+    return parseUnits(value, decimals);
+}
+
 export async function POST(req: Request) {
     const ctx = await getCtx();
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -77,14 +88,20 @@ export async function POST(req: Request) {
                     const side = oneOf<Side>(body.side, ['buy', 'sell'], 'buy or sell');
                     const base = POOLS[id].base;
 
+                    const [inDecimals, outDecimals] =
+                        side === 'buy' ? [6, base.decimals] : [base.decimals, 6];
+
                     return swap(
                         ctx,
                         wallet(),
                         id,
                         side,
-                        side === 'buy'
-                            ? amount(body.amount, 6, 'USDG')
-                            : amount(body.amount, base.decimals, base.symbol),
+                        amount(
+                            body.amount,
+                            inDecimals,
+                            side === 'buy' ? 'USDG' : base.symbol,
+                        ),
+                        minimum(body.minOut, outDecimals),
                     );
                 }
                 case 'add':

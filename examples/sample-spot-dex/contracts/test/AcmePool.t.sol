@@ -269,4 +269,23 @@ contract AcmePoolTest is Test {
         assertEq(usdg.acceptedGroup(), 6);
         assertEq(usdg.acceptedBy(), address(pool));
     }
+
+    function testRemoveRefusesZeroOut() public {
+        _seed(lena, 10 ether, 24_000e6);
+
+        vm.prank(lena);
+        vm.expectRevert(AcmePool.InsufficientLiquidity.selector);
+        pool.removeLiquidity(1, 0, 0, lena);
+    }
+
+    function testNotifyRefusesWhenOnlyLockedLiquidityRemains() public {
+        uint256 lenaLp = _seed(lena, 10 ether, 24_000e6);
+
+        vm.prank(lena);
+        pool.removeLiquidity(lenaLp, 0, 0, lena);
+
+        vm.prank(owner);
+        vm.expectRevert(AcmePool.NoLiquidity.selector);
+        pool.notifyRewards(1e6);
+    }
 }

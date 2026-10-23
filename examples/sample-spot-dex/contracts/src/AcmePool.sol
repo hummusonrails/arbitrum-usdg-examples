@@ -154,6 +154,8 @@ contract AcmePool is ERC20, Ownable, ReentrancyGuard {
         baseOut = (baseReserve * liquidity) / supply;
         quoteOut = (quoteReserve * liquidity) / supply;
 
+        // Burning LP for nothing back is never what the caller meant.
+        if (baseOut == 0 || quoteOut == 0) revert InsufficientLiquidity();
         if (baseOut < minBase || quoteOut < minQuote) revert InsufficientOutput();
 
         _burn(msg.sender, liquidity);
@@ -171,7 +173,9 @@ contract AcmePool is ERC20, Ownable, ReentrancyGuard {
     function notifyRewards(uint256 amount) external nonReentrant {
         uint256 supply = totalSupply();
 
-        if (supply == 0) revert NoLiquidity();
+        // With only the locked liquidity left, every reward would go to the
+        // dead address, where nobody can claim it.
+        if (supply <= MINIMUM_LIQUIDITY) revert NoLiquidity();
         if (amount == 0) revert ZeroAmount();
 
         quote.safeTransferFrom(msg.sender, address(this), amount);
