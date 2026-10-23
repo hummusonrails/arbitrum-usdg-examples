@@ -82,3 +82,11 @@ export async function fund(
         );
     }
 }
+
+// What one "add demo funds" press gives a wallet on the forks.
+export const DEMO_TOP_UP: Funding = {
+    usdg: 10_000n * 10n ** 6n,
+    usdgEthereum: 5_000n * 10n ** 6n,
+    weth: 2n * 10n ** 18n,
+    arb: 10_000n * 10n ** 18n,
+};
