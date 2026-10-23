@@ -2,7 +2,10 @@
 import { startStack } from './stack.ts';
 
 // PORT picks another app port when 3000 is taken.
-const stack = await startStack({ app: 'dev', appPort: Number(process.env.PORT ?? 3000) });
+const stack = await startStack({
+    app: 'dev',
+    appPort: Number(process.env.PORT ?? 3000),
+});
 
 console.log(`\nAcme Swap (sample app) running on local forks of Arbitrum One and Ethereum
   app                ${stack.appUrl}
