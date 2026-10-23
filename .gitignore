@@ -9,3 +9,7 @@ next-env.d.ts
 
 # Written by next dev for coding agents
 examples/*/app/AGENTS.md
+
+# Foundry build output
+examples/*/contracts/out
+examples/*/contracts/cache

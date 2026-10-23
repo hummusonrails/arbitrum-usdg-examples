@@ -1,0 +1,15 @@
+{
+    "name": "@arbitrum-usdg/spot-dex-contracts",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "build": "forge build",
+        "test": "forge test"
+    },
+    "dependencies": {
+        "@openzeppelin/contracts": "^5.4.0"
+    },
+    "devDependencies": {
+        "forge-std": "github:foundry-rs/forge-std#v1.9.7"
+    }
+}

@@ -4,3 +4,4 @@ packages:
     - 'examples/*/mock-paxos'
     - 'examples/*/e2e'
     - 'examples/*/fork-services'
+    - 'examples/*/contracts'
