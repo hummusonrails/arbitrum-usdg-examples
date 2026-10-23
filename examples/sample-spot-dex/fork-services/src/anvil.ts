@@ -108,32 +108,6 @@ export async function asAccount<T>(
     }
 }
 
-// The first candidate holding at least `minUnits` of `token`. Holders change on
-// mainnet, so every funding source has a backup.
-export async function pickHolder(
-    client: ForkClient,
-    token: Address,
-    candidates: Address[],
-    minUnits: bigint,
-): Promise<Address> {
-    for (const holder of candidates) {
-        const balance = await client.readContract({
-            address: token,
-            abi: erc20Abi,
-            functionName: 'balanceOf',
-            args: [holder],
-        });
-
-        if (balance >= minUnits) {
-            return holder;
-        }
-    }
-
-    throw new Error(
-        `No funding holder for ${token} on ${client.chain.name} holds ${minUnits} units. Add a holder to the list.`,
-    );
-}
-
 // Moves a real ERC20 balance from a holder on the fork, so balances and
 // Transfer logs are real contract behavior.
 export async function fundErc20(
@@ -155,4 +129,41 @@ export async function fundErc20(
 
         await client.waitForTransactionReceipt({ hash });
     });
+}
+
+// Moves `units` of `token` to `to`, drawing from each holder in turn. Holder
+// balances change on mainnet, so no single holder has to cover the whole amount.
+export async function fundFromHolders(
+    client: ForkClient,
+    token: Address,
+    holders: Address[],
+    to: Address,
+    units: bigint,
+): Promise<void> {
+    let remaining = units;
+
+    for (const holder of holders) {
+        if (remaining === 0n) {
+            return;
+        }
+
+        const balance = await client.readContract({
+            address: token,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [holder],
+        });
+        const take = balance < remaining ? balance : remaining;
+
+        if (take > 0n) {
+            await fundErc20(client, holder, token, to, take);
+            remaining -= take;
+        }
+    }
+
+    if (remaining > 0n) {
+        throw new Error(
+            `The funding holders for ${token} on ${client.chain.name} are ${remaining} units short. Add a holder to the list.`,
+        );
+    }
 }

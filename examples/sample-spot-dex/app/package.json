@@ -1,0 +1,35 @@
+{
+    "name": "sample-spot-dex",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "probe": "pnpm --filter @arbitrum-usdg/spot-dex-contracts build && tsx scripts/probe.ts",
+        "typecheck": "tsc --noEmit -p .",
+        "test": "tsx --test test/*.test.ts",
+        "dev": "next dev",
+        "build": "DEX_LOOP=off next build",
+        "start": "next start",
+        "dev:fork": "tsx scripts/dev-fork.ts"
+    },
+    "dependencies": {
+        "@arbitrum-usdg/guide": "workspace:*",
+        "@arbitrum-usdg/spot-dex-contracts": "workspace:*",
+        "@arbitrum-usdg/spot-dex-fork-services": "workspace:*",
+        "@arbitrum-usdg/usdg": "workspace:*",
+        "@tailwindcss/postcss": "^4.3.3",
+        "lucide-react": "^1.60.0",
+        "motion": "^14.4.0",
+        "next": "^16.4.2",
+        "postcss": "^8.5.31",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1",
+        "server-only": "^0.0.1",
+        "tailwindcss": "^4.3.3",
+        "viem": "^2.38.0"
+    },
+    "devDependencies": {
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0"
+    }
+}
