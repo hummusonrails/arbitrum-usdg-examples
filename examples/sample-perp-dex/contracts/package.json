@@ -1,0 +1,19 @@
+{
+    "name": "@arbitrum-usdg/perp-dex-contracts",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "build": "forge build && node scripts/abi.mjs && prettier --write abi.ts",
+        "test": "forge test"
+    },
+    "dependencies": {
+        "@openzeppelin/contracts": "^5.4.0"
+    },
+    "devDependencies": {
+        "forge-std": "github:foundry-rs/forge-std#v1.9.7"
+    },
+    "type": "module",
+    "exports": {
+        ".": "./abi.ts"
+    }
+}
