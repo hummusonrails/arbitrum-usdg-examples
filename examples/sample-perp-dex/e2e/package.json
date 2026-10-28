@@ -1,0 +1,16 @@
+{
+    "name": "sample-perp-dex-e2e",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "pnpm --filter sample-perp-dex build && tsx --test --test-concurrency=1 test/*.e2e.ts",
+        "typecheck": "tsc --noEmit -p ."
+    },
+    "dependencies": {
+        "@arbitrum-usdg/perp-dex-contracts": "workspace:*",
+        "@arbitrum-usdg/usdg": "workspace:*",
+        "sample-perp-dex": "workspace:*",
+        "viem": "^2.38.0"
+    }
+}
