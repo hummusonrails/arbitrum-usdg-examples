@@ -2,7 +2,8 @@
 // Paxos server, the setup command, and the app. Used by `pnpm dev:mock` and
 // by the end to end tests.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,7 +96,10 @@ export async function startStack(opts: StackOptions) {
         webhookApiKey: webhookKey,
         pollMs: 500,
     });
-    const dbPath = opts.dbPath ?? join(APP_DIR, 'treasury.mock.db');
+    // Outside the app folder: next dev reloads the page whenever a file in it changes.
+    const dbPath = opts.dbPath ?? join(tmpdir(), 'sample-business-treasury', 'treasury.mock.db');
+
+    mkdirSync(dirname(dbPath), { recursive: true });
 
     // The fork and the mock start fresh every run, so the records do too.
     for (const suffix of ['', '-wal', '-shm']) {
