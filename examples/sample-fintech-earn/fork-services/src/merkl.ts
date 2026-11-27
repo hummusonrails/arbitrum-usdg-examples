@@ -189,8 +189,21 @@ export async function startMerklStandIn(opts: MerklStandInOptions) {
 
     const wei = (arb: number) => BigInt(Math.floor(arb * 1e6)) * 10n ** 12n;
 
+    // Publishes run one at a time. The timer and POST /publish can overlap, and
+    // an earlier publish that finished last would leave the served root and
+    // proof one tree behind the Distributor, so every claim would revert.
+    let publishing: Promise<void> = Promise.resolve();
+
+    function publish(): Promise<void> {
+        const run = publishing.then(publishNow);
+
+        publishing = run.catch(() => {});
+
+        return run;
+    }
+
     // Moves everything accrued so far into a new root on the Distributor.
-    async function publish() {
+    async function publishNow() {
         await accrue();
 
         const next = new Map<Address, bigint>();
